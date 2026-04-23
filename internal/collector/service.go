@@ -27,9 +27,31 @@ func NewService(provider ConfigProvider, runtimeState *state.Store) *Service {
 
 func (s *Service) Run(ctx context.Context) error {
 	s.state.SetServiceStatus("pace", "starting", false, "", time.Time{})
+	var client *pace.Client
+	defer func() {
+		if client != nil {
+			_ = client.Close()
+		}
+	}()
 	for {
-		if err := s.pollOnce(ctx); err != nil {
-			cfg := s.provider.GetConfig()
+		cfg := s.provider.GetConfig()
+		if client == nil {
+			opened, err := pace.Open(cfg)
+			if err != nil {
+				err = fmt.Errorf("open %s: %w", cfg.Serial.Port, err)
+				s.state.SetServiceStatus("pace", "error", false, err.Error(), time.Time{})
+				log.Printf("pace poll failed: %v", err)
+				if !sleep(ctx, cfg.Polling.ReconnectDelay.Duration) {
+					return nil
+				}
+				continue
+			}
+			client = opened
+		}
+
+		if err := s.pollOnce(ctx, client, cfg); err != nil {
+			_ = client.Close()
+			client = nil
 			s.state.SetServiceStatus("pace", "error", false, err.Error(), time.Time{})
 			log.Printf("pace poll failed: %v", err)
 			if !sleep(ctx, cfg.Polling.ReconnectDelay.Duration) {
@@ -37,21 +59,13 @@ func (s *Service) Run(ctx context.Context) error {
 			}
 			continue
 		}
-		cfg := s.provider.GetConfig()
 		if !sleep(ctx, cfg.Polling.Interval.Duration) {
 			return nil
 		}
 	}
 }
 
-func (s *Service) pollOnce(ctx context.Context) error {
-	cfg := s.provider.GetConfig()
-	client, err := pace.Open(cfg)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", cfg.Serial.Port, err)
-	}
-	defer client.Close()
-
+func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.Config) error {
 	if len(s.packs) == 0 {
 		packs := s.discoverPacks(ctx, client, cfg)
 		if len(packs) > 0 {
@@ -89,6 +103,9 @@ func (s *Service) pollOnce(ctx context.Context) error {
 
 func (s *Service) discoverPacks(ctx context.Context, client *pace.Client, cfg config.Config) []uint8 {
 	packs := make([]uint8, 0)
+	if cfg.Device.Protocol == string(pace.ProtocolRS232) {
+		return []uint8{255}
+	}
 	if cfg.Device.Protocol == string(pace.ProtocolConsole) {
 		got, err := client.PackNumber(cfg.Device.FirstPackAddress)
 		if err != nil {

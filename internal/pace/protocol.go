@@ -78,7 +78,10 @@ func ReadFrame(r io.Reader, timeout time.Duration) ([]byte, error) {
 				continue
 			}
 			buf = append(buf, one[0])
-			if one[0] == '\r' {
+			if expected, ok := expectedFrameLength(buf); ok && len(buf) >= expected {
+				return bytes.TrimSpace(buf), nil
+			}
+			if one[0] == '\r' && !looksLikePaceHeader(buf) {
 				return bytes.TrimSpace(buf), nil
 			}
 		}
@@ -96,6 +99,25 @@ func ReadFrame(r io.Reader, timeout time.Duration) ([]byte, error) {
 		return bytes.TrimSpace(buf), nil
 	}
 	return nil, fmt.Errorf("timeout waiting for PACE frame")
+}
+
+func expectedFrameLength(buf []byte) (int, bool) {
+	if len(buf) < 13 || buf[0] != '~' {
+		return 0, false
+	}
+	infoChars, err := strconv.ParseInt(string(buf[10:13]), 16, 32)
+	if err != nil {
+		return 0, false
+	}
+	return 18 + int(infoChars), true
+}
+
+func looksLikePaceHeader(buf []byte) bool {
+	if len(buf) < 13 || buf[0] != '~' {
+		return false
+	}
+	_, err := strconv.ParseInt(string(buf[10:13]), 16, 32)
+	return err == nil
 }
 
 func ParsePackNumber(response []byte) (uint8, error) {
@@ -153,6 +175,9 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 		offset++
 		p.CellsMV = make([]int, 0, cellCount)
 		for i := 0; i < cellCount; i++ {
+			if i > 0 && offset < len(fields) && plausibleTemperatureCount(fields[offset]) && !plausibleCellMillivolts(peekU16(fields, offset)) {
+				break
+			}
 			value, ok := readU16(fields, &offset)
 			if !ok {
 				return nil, fmt.Errorf("analog payload ended in cell voltages")
@@ -218,7 +243,26 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 				p.SOH = round(p.FullCapacityAh/p.DesignCapacityAh*100, 0)
 			}
 		}
+		parsedV2Tail := false
+		if offset+14 <= len(fields) && (packIndex+1 == int(reportedPackCount) || !plausibleCellCount(fields[offset])) {
+			p.SOC = float64(fields[offset])
+			offset++
+			offset += 8
+			p.SOH = float64(fields[offset])
+			offset++
+			offset += 4
+			parsedV2Tail = true
+		}
 		packs = append(packs, p)
+
+		// Multi-pack RS232 responses include one trailing flag byte per pack.
+		if !parsedV2Tail && offset < len(fields) {
+			offset++
+		}
+		// Some firmwares include an additional INFOFLAG byte before the next pack.
+		if !parsedV2Tail && packIndex+1 < int(reportedPackCount) && offset < len(fields) && fields[offset] != byte(cellCount) {
+			offset++
+		}
 	}
 
 	return packs, nil
@@ -313,6 +357,25 @@ func readU16(data []byte, offset *int) (uint16, bool) {
 	value := uint16(data[*offset])<<8 | uint16(data[*offset+1])
 	*offset += 2
 	return value, true
+}
+
+func peekU16(data []byte, offset int) uint16 {
+	if offset+1 >= len(data) {
+		return 0
+	}
+	return uint16(data[offset])<<8 | uint16(data[offset+1])
+}
+
+func plausibleCellMillivolts(value uint16) bool {
+	return value >= 2000 && value <= 4500
+}
+
+func plausibleCellCount(value byte) bool {
+	return value >= 1 && value <= 32
+}
+
+func plausibleTemperatureCount(value byte) bool {
+	return value >= 1 && value <= 12
 }
 
 func lengthChecksum(lenID string) string {

@@ -32,24 +32,29 @@ func main() {
 			log.Fatalf("address out of range: %d", address)
 		}
 		pack := uint8(address)
-		got, err := client.PackNumber(pack)
-		if err != nil {
-			fmt.Printf("addr=%d pack_number error=%v\n", address, err)
-			continue
+		if *protocol != string(pace.ProtocolRS232) {
+			got, err := client.PackNumber(pack)
+			if err != nil {
+				fmt.Printf("addr=%d pack_number error=%v\n", address, err)
+				continue
+			}
+			fmt.Printf("addr=%d pack_number=%d\n", address, got)
 		}
-		fmt.Printf("addr=%d pack_number=%d\n", address, got)
-		analog, err := client.Analog(pack)
+		packs, err := client.AnalogPacks(pack)
 		if err != nil {
 			fmt.Printf("addr=%d analog error=%v\n", address, err)
 			continue
 		}
-		fmt.Printf("addr=%d voltage=%.2fV current=%.2fA soc=%.1f%% cells=%d temps=%d\n",
-			address,
-			analog.VoltageV,
-			analog.CurrentA,
-			analog.SOC,
-			len(analog.CellsMV),
-			len(analog.TemperaturesC),
-		)
+		for _, analog := range packs {
+			fmt.Printf("addr=%d pack=%d voltage=%.2fV current=%.2fA soc=%.1f%% cells=%d temps=%d\n",
+				address,
+				analog.Address,
+				analog.VoltageV,
+				analog.CurrentA,
+				analog.SOC,
+				len(analog.CellsMV),
+				len(analog.TemperaturesC),
+			)
+		}
 	}
 }

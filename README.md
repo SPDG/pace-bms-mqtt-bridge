@@ -25,8 +25,8 @@ go run ./cmd/pace-bms-mqtt-bridge --config ./configs/config.example.yaml
 Probe a serial adapter:
 
 ```bash
+go run ./cmd/pace-bms-probe --port /dev/pace-bms --baud 9600 --protocol rs232 --first 255 --last 255
 go run ./cmd/pace-bms-probe --port /dev/pace-bms --baud 115200 --protocol rs485 --first 0 --last 16
-go run ./cmd/pace-bms-probe --port /dev/pace-bms --baud 9600 --protocol console --first 1 --last 1
 ```
 
 By default the web panel listens on `http://127.0.0.1:8080`.

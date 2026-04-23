@@ -1,14 +1,14 @@
 device:
     name: pace-main
     protocol: rs485
-    first_pack_address: 0
-    max_parallel_packs: 16
+    first_pack_address: 255
+    max_parallel_packs: 1
     manufacturer: PACE
     model: PACE BMS
     discover_on_startup: true
 serial:
     port: /dev/pace-bms
-    baud_rate: 115200
+    baud_rate: 9600
     data_bits: 8
     parity: "N"
     stop_bits: 1
