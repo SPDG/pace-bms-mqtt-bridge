@@ -55,6 +55,22 @@ h2 {
   margin-bottom: 6px;
 }
 
+.cell-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.cell-summary span {
+  border: 1px solid #33404f;
+  border-radius: 6px;
+  padding: 4px 6px;
+  color: #c7d2df;
+  font-size: 13px;
+  line-height: 1;
+}
+
 .ok {
   color: #61d394;
 }

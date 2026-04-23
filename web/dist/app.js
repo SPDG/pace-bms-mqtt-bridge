@@ -18,7 +18,14 @@ async function loadStatus() {
   data.packs.forEach(pack => {
     const div = document.createElement('div');
     div.className = 'card';
-    div.innerHTML = `<strong>Pack ${String(pack.address).padStart(2, '0')}</strong>${pack.voltageV} V<br>${pack.currentA} A<br>${pack.soc} % SOC<br>${pack.cellsMv.length} cells`;
+    const cells = pack.cellsMv || [];
+    const min = cells.length ? Math.min(...cells) / 1000 : null;
+    const max = cells.length ? Math.max(...cells) / 1000 : null;
+    const diff = min !== null && max !== null ? max - min : null;
+    const cellSummary = diff !== null
+      ? `<div class="cell-summary"><span>Min ${min.toFixed(3)} V</span><span>Max ${max.toFixed(3)} V</span><span>Diff ${diff.toFixed(3)} V</span></div>`
+      : '';
+    div.innerHTML = `<strong>Pack ${String(pack.address).padStart(2, '0')}</strong>${pack.voltageV} V<br>${pack.currentA} A<br>${pack.soc} % SOC<br>${cells.length} cells${cellSummary}`;
     packs.appendChild(div);
   });
 

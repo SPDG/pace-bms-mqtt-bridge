@@ -53,6 +53,14 @@ func TelemetryForPack(p Pack) []Telemetry {
 		intv(p, "cell_count", "Cell Count", len(p.CellsMV), "", "", "measurement", "mdi:counter"),
 		intv(p, "temperature_count", "Temperature Count", len(p.TemperaturesC), "", "", "measurement", "mdi:counter"),
 	}
+	if minMV, maxMV, ok := cellVoltageRange(p.CellsMV); ok {
+		diffMV := maxMV - minMV
+		values = append(values,
+			cellSummary(p, "cell_voltage_min", "Cell Voltage Min", minMV, "mdi:align-vertical-bottom"),
+			cellSummary(p, "cell_voltage_max", "Cell Voltage Max", maxMV, "mdi:align-vertical-top"),
+			cellSummary(p, "cell_voltage_diff", "Cell Voltage Diff", diffMV, "mdi:format-align-middle"),
+		)
+	}
 
 	for i, mv := range p.CellsMV {
 		id := fmt.Sprintf("cell_%02d_voltage", i+1)
@@ -85,6 +93,39 @@ func TelemetryForPack(p Pack) []Telemetry {
 		})
 	}
 	return values
+}
+
+func cellVoltageRange(cells []int) (int, int, bool) {
+	if len(cells) == 0 {
+		return 0, 0, false
+	}
+	minMV := cells[0]
+	maxMV := cells[0]
+	for _, mv := range cells[1:] {
+		if mv < minMV {
+			minMV = mv
+		}
+		if mv > maxMV {
+			maxMV = mv
+		}
+	}
+	return minMV, maxMV, true
+}
+
+func cellSummary(p Pack, id, name string, valueMV int, icon string) Telemetry {
+	value := float64(valueMV) / 1000
+	return Telemetry{
+		ID:          packID(p.Address, id),
+		Name:        fmt.Sprintf("Pack %02d %s", p.Address, name),
+		PackAddress: p.Address,
+		Unit:        "V",
+		DeviceClass: "voltage",
+		StateClass:  "measurement",
+		Icon:        icon,
+		Value:       value,
+		Rendered:    strconv.FormatFloat(value, 'f', 3, 64),
+		UpdatedAt:   p.UpdatedAt,
+	}
 }
 
 func num(p Pack, id, name string, value float64, precision int, unit, deviceClass, stateClass, icon string) Telemetry {
