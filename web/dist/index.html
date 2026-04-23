@@ -7,28 +7,56 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main>
-    <header>
-      <h1>PACE BMS MQTT Bridge</h1>
-      <p id="summary">Loading...</p>
-    </header>
-    <section>
-      <h2>Services</h2>
-      <div id="services" class="grid"></div>
-    </section>
-    <section>
-      <h2>Packs</h2>
-      <div id="power-overview" class="overview"></div>
-      <div id="packs" class="grid"></div>
-    </section>
-    <section>
-      <h2>Telemetry</h2>
-      <table>
-        <thead><tr><th>Name</th><th>Value</th><th>Updated</th></tr></thead>
-        <tbody id="telemetry"></tbody>
-      </table>
-    </section>
-  </main>
+  <div class="app-shell">
+    <aside class="rail" aria-label="Navigation">
+      <div class="rail-brand">P</div>
+      <div class="rail-item active">B</div>
+      <div class="rail-item">M</div>
+      <div class="rail-item">H</div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <h1 id="device-name">pace-main</h1>
+          <p id="summary">Loading...</p>
+        </div>
+        <div id="top-status" class="top-status"></div>
+      </header>
+
+      <main class="content">
+        <section class="hero-grid">
+          <div id="power-overview"></div>
+          <div id="services" class="service-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Packs</h2>
+              <p id="pack-subtitle"></p>
+            </div>
+          </div>
+          <div id="packs" class="pack-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Telemetry</h2>
+              <p id="telemetry-subtitle"></p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Value</th><th>Updated</th></tr></thead>
+              <tbody id="telemetry"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>
