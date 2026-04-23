@@ -1,0 +1,30 @@
+device:
+    name: pace-main
+    protocol: rs485
+    first_pack_address: 0
+    max_parallel_packs: 16
+    manufacturer: PACE
+    model: PACE BMS
+    discover_on_startup: true
+serial:
+    port: /dev/pace-bms
+    baud_rate: 115200
+    data_bits: 8
+    parity: "N"
+    stop_bits: 1
+    timeout: 3s
+polling:
+    interval: 15s
+    reconnect_delay: 5s
+mqtt:
+    broker: tcp://127.0.0.1:1883
+    username: ""
+    password: ""
+    client_id: pace-bms-hive-nuc
+    topic_prefix: pace/pace-main
+    discovery_prefix: homeassistant
+    retain: true
+http:
+    listen: 127.0.0.1:8080
+logging:
+    level: info

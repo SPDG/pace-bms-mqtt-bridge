@@ -1,0 +1,14 @@
+[Unit]
+Description=PACE BMS to MQTT bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pace-bms-mqtt-bridge
+ExecStart=/opt/pace-bms-mqtt-bridge/pace-bms-mqtt-bridge --config /etc/pace-bms-mqtt-bridge/config.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PACE BMS MQTT Bridge</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>PACE BMS MQTT Bridge</h1>
+      <p id="summary">Loading...</p>
+    </header>
+    <section>
+      <h2>Services</h2>
+      <div id="services" class="grid"></div>
+    </section>
+    <section>
+      <h2>Packs</h2>
+      <div id="packs" class="grid"></div>
+    </section>
+    <section>
+      <h2>Telemetry</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Value</th><th>Updated</th></tr></thead>
+        <tbody id="telemetry"></tbody>
+      </table>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
