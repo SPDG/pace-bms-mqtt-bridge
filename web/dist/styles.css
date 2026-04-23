@@ -43,6 +43,10 @@ h2 {
   gap: 10px;
 }
 
+.overview {
+  margin-bottom: 10px;
+}
+
 .card {
   border: 1px solid #29313d;
   border-radius: 8px;
@@ -53,6 +57,22 @@ h2 {
 .card strong {
   display: block;
   margin-bottom: 6px;
+}
+
+.overview-card {
+  display: inline-flex;
+  min-width: 260px;
+  flex-direction: column;
+}
+
+.overview-card span {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.overview-card small {
+  margin-top: 4px;
+  color: #aeb8c4;
 }
 
 .cell-summary {

@@ -15,6 +15,14 @@ async function loadStatus() {
 
   const packs = document.getElementById('packs');
   packs.innerHTML = '';
+  const telemetryById = Object.fromEntries(data.telemetry.map(item => [item.id, item]));
+  const overview = document.getElementById('power-overview');
+  const batteryPower = telemetryById.battery_power;
+  const dischargePower = telemetryById.battery_discharge_power;
+  const chargePower = telemetryById.battery_charge_power;
+  overview.innerHTML = batteryPower
+    ? `<div class="card overview-card"><strong>Battery Power</strong><span>${batteryPower.rendered} ${batteryPower.unit}</span><small>Discharge ${dischargePower?.rendered ?? '0'} W · Charge ${chargePower?.rendered ?? '0'} W</small></div>`
+    : '';
   data.packs.forEach(pack => {
     const div = document.createElement('div');
     div.className = 'card';

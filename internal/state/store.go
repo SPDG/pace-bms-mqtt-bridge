@@ -82,6 +82,7 @@ func (s *Store) Snapshot() Snapshot {
 	for _, value := range s.telemetry {
 		telemetry = append(telemetry, value)
 	}
+	telemetry = append(telemetry, pace.AggregateTelemetry(packs)...)
 	sort.Slice(telemetry, func(i, j int) bool {
 		return telemetry[i].ID < telemetry[j].ID
 	})

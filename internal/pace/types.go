@@ -98,6 +98,32 @@ func TelemetryForPack(p Pack) []Telemetry {
 	return values
 }
 
+func AggregateTelemetry(packs []Pack) []Telemetry {
+	if len(packs) == 0 {
+		return nil
+	}
+
+	var totalPowerW float64
+	updatedAt := packs[0].UpdatedAt
+	for _, pack := range packs {
+		// PACE reports discharge current as negative on the tested packs.
+		// Home Assistant battery power in "Standard" mode expects positive
+		// values while discharging and negative values while charging.
+		totalPowerW -= pack.PowerKW * 1000
+		if pack.UpdatedAt.After(updatedAt) {
+			updatedAt = pack.UpdatedAt
+		}
+	}
+
+	dischargePowerW := math.Max(totalPowerW, 0)
+	chargePowerW := math.Max(-totalPowerW, 0)
+	return []Telemetry{
+		aggregatePower("battery_power", "Battery Power", totalPowerW, "mdi:battery-charging", updatedAt),
+		aggregatePower("battery_discharge_power", "Battery Discharge Power", dischargePowerW, "mdi:battery-arrow-down", updatedAt),
+		aggregatePower("battery_charge_power", "Battery Charge Power", chargePowerW, "mdi:battery-arrow-up", updatedAt),
+	}
+}
+
 func cellVoltageRange(cells []int) (int, int, bool) {
 	if len(cells) == 0 {
 		return 0, 0, false
@@ -113,6 +139,22 @@ func cellVoltageRange(cells []int) (int, int, bool) {
 		}
 	}
 	return minMV, maxMV, true
+}
+
+func aggregatePower(id, name string, value float64, icon string, updatedAt time.Time) Telemetry {
+	rounded := math.Round(value)
+	return Telemetry{
+		ID:                        id,
+		Name:                      name,
+		Unit:                      "W",
+		DeviceClass:               "power",
+		StateClass:                "measurement",
+		Icon:                      icon,
+		SuggestedDisplayPrecision: displayPrecision(0),
+		Value:                     rounded,
+		Rendered:                  strconv.FormatFloat(rounded, 'f', 0, 64),
+		UpdatedAt:                 updatedAt,
+	}
 }
 
 func cellSummary(p Pack, id, name string, valueMV int, icon string) Telemetry {
