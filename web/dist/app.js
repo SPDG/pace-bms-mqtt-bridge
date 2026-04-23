@@ -23,7 +23,7 @@ async function loadStatus() {
     const max = cells.length ? Math.max(...cells) / 1000 : null;
     const diff = min !== null && max !== null ? max - min : null;
     const cellSummary = diff !== null
-      ? `<div class="cell-summary"><span>Min ${min.toFixed(3)} V</span><span>Max ${max.toFixed(3)} V</span><span>Diff ${diff.toFixed(3)} V</span></div>`
+      ? `<div class="cell-summary"><span>Min ${Math.round(min * 1000)} mV</span><span>Max ${Math.round(max * 1000)} mV</span><span>Diff ${Math.round(diff * 1000)} mV</span></div>`
       : '';
     div.innerHTML = `<strong>Pack ${String(pack.address).padStart(2, '0')}</strong>${pack.voltageV} V<br>${pack.currentA} A<br>${pack.soc} % SOC<br>${cells.length} cells${cellSummary}`;
     packs.appendChild(div);

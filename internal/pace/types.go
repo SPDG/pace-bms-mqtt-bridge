@@ -27,16 +27,17 @@ type Pack struct {
 }
 
 type Telemetry struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	PackAddress uint8     `json:"packAddress"`
-	Unit        string    `json:"unit,omitempty"`
-	DeviceClass string    `json:"deviceClass,omitempty"`
-	StateClass  string    `json:"stateClass,omitempty"`
-	Icon        string    `json:"icon,omitempty"`
-	Value       any       `json:"value"`
-	Rendered    string    `json:"rendered"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID                        string    `json:"id"`
+	Name                      string    `json:"name"`
+	PackAddress               uint8     `json:"packAddress"`
+	Unit                      string    `json:"unit,omitempty"`
+	DeviceClass               string    `json:"deviceClass,omitempty"`
+	StateClass                string    `json:"stateClass,omitempty"`
+	Icon                      string    `json:"icon,omitempty"`
+	SuggestedDisplayPrecision *int      `json:"suggestedDisplayPrecision,omitempty"`
+	Value                     any       `json:"value"`
+	Rendered                  string    `json:"rendered"`
+	UpdatedAt                 time.Time `json:"updatedAt"`
 }
 
 func TelemetryForPack(p Pack) []Telemetry {
@@ -65,31 +66,33 @@ func TelemetryForPack(p Pack) []Telemetry {
 	for i, mv := range p.CellsMV {
 		id := fmt.Sprintf("cell_%02d_voltage", i+1)
 		values = append(values, Telemetry{
-			ID:          packID(p.Address, id),
-			Name:        fmt.Sprintf("Pack %02d Cell %02d Voltage", p.Address, i+1),
-			PackAddress: p.Address,
-			Unit:        "V",
-			DeviceClass: "voltage",
-			StateClass:  "measurement",
-			Icon:        "mdi:battery",
-			Value:       float64(mv) / 1000,
-			Rendered:    strconv.FormatFloat(float64(mv)/1000, 'f', 3, 64),
-			UpdatedAt:   p.UpdatedAt,
+			ID:                        packID(p.Address, id),
+			Name:                      fmt.Sprintf("Pack %02d Cell %02d Voltage", p.Address, i+1),
+			PackAddress:               p.Address,
+			Unit:                      "mV",
+			DeviceClass:               "voltage",
+			StateClass:                "measurement",
+			Icon:                      "mdi:battery",
+			SuggestedDisplayPrecision: displayPrecision(0),
+			Value:                     mv,
+			Rendered:                  strconv.Itoa(mv),
+			UpdatedAt:                 p.UpdatedAt,
 		})
 	}
 	for i, temp := range p.TemperaturesC {
 		id := fmt.Sprintf("temperature_%02d", i+1)
 		values = append(values, Telemetry{
-			ID:          packID(p.Address, id),
-			Name:        fmt.Sprintf("Pack %02d Temperature %02d", p.Address, i+1),
-			PackAddress: p.Address,
-			Unit:        "C",
-			DeviceClass: "temperature",
-			StateClass:  "measurement",
-			Icon:        "mdi:thermometer",
-			Value:       temp,
-			Rendered:    strconv.FormatFloat(temp, 'f', 2, 64),
-			UpdatedAt:   p.UpdatedAt,
+			ID:                        packID(p.Address, id),
+			Name:                      fmt.Sprintf("Pack %02d Temperature %02d", p.Address, i+1),
+			PackAddress:               p.Address,
+			Unit:                      "C",
+			DeviceClass:               "temperature",
+			StateClass:                "measurement",
+			Icon:                      "mdi:thermometer",
+			SuggestedDisplayPrecision: displayPrecision(2),
+			Value:                     temp,
+			Rendered:                  strconv.FormatFloat(temp, 'f', 2, 64),
+			UpdatedAt:                 p.UpdatedAt,
 		})
 	}
 	return values
@@ -113,33 +116,34 @@ func cellVoltageRange(cells []int) (int, int, bool) {
 }
 
 func cellSummary(p Pack, id, name string, valueMV int, icon string) Telemetry {
-	value := float64(valueMV) / 1000
 	return Telemetry{
-		ID:          packID(p.Address, id),
-		Name:        fmt.Sprintf("Pack %02d %s", p.Address, name),
-		PackAddress: p.Address,
-		Unit:        "V",
-		DeviceClass: "voltage",
-		StateClass:  "measurement",
-		Icon:        icon,
-		Value:       value,
-		Rendered:    strconv.FormatFloat(value, 'f', 3, 64),
-		UpdatedAt:   p.UpdatedAt,
+		ID:                        packID(p.Address, id),
+		Name:                      fmt.Sprintf("Pack %02d %s", p.Address, name),
+		PackAddress:               p.Address,
+		Unit:                      "mV",
+		DeviceClass:               "voltage",
+		StateClass:                "measurement",
+		Icon:                      icon,
+		SuggestedDisplayPrecision: displayPrecision(0),
+		Value:                     valueMV,
+		Rendered:                  strconv.Itoa(valueMV),
+		UpdatedAt:                 p.UpdatedAt,
 	}
 }
 
-func num(p Pack, id, name string, value float64, precision int, unit, deviceClass, stateClass, icon string) Telemetry {
+func num(p Pack, id, name string, value float64, precisionValue int, unit, deviceClass, stateClass, icon string) Telemetry {
 	return Telemetry{
-		ID:          packID(p.Address, id),
-		Name:        fmt.Sprintf("Pack %02d %s", p.Address, name),
-		PackAddress: p.Address,
-		Unit:        unit,
-		DeviceClass: deviceClass,
-		StateClass:  stateClass,
-		Icon:        icon,
-		Value:       value,
-		Rendered:    strconv.FormatFloat(value, 'f', precision, 64),
-		UpdatedAt:   p.UpdatedAt,
+		ID:                        packID(p.Address, id),
+		Name:                      fmt.Sprintf("Pack %02d %s", p.Address, name),
+		PackAddress:               p.Address,
+		Unit:                      unit,
+		DeviceClass:               deviceClass,
+		StateClass:                stateClass,
+		Icon:                      icon,
+		SuggestedDisplayPrecision: displayPrecision(precisionValue),
+		Value:                     value,
+		Rendered:                  strconv.FormatFloat(value, 'f', precisionValue, 64),
+		UpdatedAt:                 p.UpdatedAt,
 	}
 }
 
@@ -160,6 +164,10 @@ func intv(p Pack, id, name string, value int, unit, deviceClass, stateClass, ico
 
 func packID(address uint8, id string) string {
 	return fmt.Sprintf("pack_%02d_%s", address, id)
+}
+
+func displayPrecision(value int) *int {
+	return &value
 }
 
 func round(v float64, precision int) float64 {

@@ -199,6 +199,9 @@ func (s *Service) ensureDiscovery(cfg config.Config, value pace.Telemetry) error
 	if value.StateClass != "" {
 		payload["state_class"] = value.StateClass
 	}
+	if value.SuggestedDisplayPrecision != nil {
+		payload["suggested_display_precision"] = *value.SuggestedDisplayPrecision
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
