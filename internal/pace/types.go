@@ -85,7 +85,7 @@ func TelemetryForPack(p Pack) []Telemetry {
 			ID:                        packID(p.Address, id),
 			Name:                      fmt.Sprintf("Pack %02d Temperature %02d", p.Address, i+1),
 			PackAddress:               p.Address,
-			Unit:                      "C",
+			Unit:                      "\u00b0C",
 			DeviceClass:               "temperature",
 			StateClass:                "measurement",
 			Icon:                      "mdi:thermometer",
