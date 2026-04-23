@@ -43,7 +43,7 @@ type Telemetry struct {
 func TelemetryForPack(p Pack) []Telemetry {
 	values := []Telemetry{
 		num(p, "soc", "SOC", p.SOC, 1, "%", "battery", "measurement", "mdi:battery"),
-		num(p, "voltage", "Voltage", p.VoltageV, 2, "V", "voltage", "measurement", "mdi:car-battery"),
+		num(p, "voltage", "Voltage", p.VoltageV, 2, "V", "", "measurement", "mdi:car-battery"),
 		num(p, "current", "Current", p.CurrentA, 2, "A", "current", "measurement", "mdi:current-dc"),
 		num(p, "power", "Power", p.PowerKW*1000, 0, "W", "power", "measurement", "mdi:flash"),
 		num(p, "remaining_capacity", "Remaining Capacity", p.RemainingCapacityAh, 2, "Ah", "", "measurement", "mdi:battery-clock"),
