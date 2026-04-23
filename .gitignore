@@ -10,6 +10,7 @@ coverage.out
 # Local config and runtime files
 *.local.yaml
 config.yaml
+.envrc
 *.log
 
 # Editor and OS files
