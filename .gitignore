@@ -1,0 +1,19 @@
+# Binaries
+/pace-bms-mqtt-bridge
+/bin/
+/dist/
+
+# Go
+*.test
+coverage.out
+
+# Local config and runtime files
+*.local.yaml
+config.yaml
+*.log
+
+# Editor and OS files
+.idea/
+.vscode/
+*~
+.DS_Store
