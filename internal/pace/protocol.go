@@ -173,14 +173,17 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 		}
 		cellCount := int(fields[offset])
 		offset++
+		if !plausibleCellCount(byte(cellCount)) {
+			return nil, fmt.Errorf("analog payload has implausible cell count %d", cellCount)
+		}
 		p.CellsMV = make([]int, 0, cellCount)
 		for i := 0; i < cellCount; i++ {
-			if i > 0 && offset < len(fields) && plausibleTemperatureCount(fields[offset]) && !plausibleCellMillivolts(peekU16(fields, offset)) {
-				break
-			}
 			value, ok := readU16(fields, &offset)
 			if !ok {
 				return nil, fmt.Errorf("analog payload ended in cell voltages")
+			}
+			if !plausibleCellMillivolts(value) {
+				return nil, fmt.Errorf("analog payload has implausible cell voltage %d mV", value)
 			}
 			p.CellsMV = append(p.CellsMV, int(value))
 		}
@@ -190,6 +193,9 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 		}
 		tempCount := int(fields[offset])
 		offset++
+		if !plausibleTemperatureCount(byte(tempCount)) {
+			return nil, fmt.Errorf("analog payload has implausible temperature count %d", tempCount)
+		}
 		p.TemperaturesC = make([]float64, 0, tempCount)
 		for i := 0; i < tempCount; i++ {
 			value, ok := readU16(fields, &offset)
@@ -244,7 +250,7 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 			}
 		}
 		parsedV2Tail := false
-		if offset+14 <= len(fields) && (packIndex+1 == int(reportedPackCount) || !plausibleCellCount(fields[offset])) {
+		if hasAnalogV2Tail(fields, offset, packIndex, int(reportedPackCount)) {
 			p.SOC = float64(fields[offset])
 			offset++
 			offset += 8
@@ -266,6 +272,18 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 	}
 
 	return packs, nil
+}
+
+func hasAnalogV2Tail(fields []byte, offset, packIndex, reportedPackCount int) bool {
+	const tailLength = 14
+	if offset+tailLength > len(fields) {
+		return false
+	}
+	if packIndex+1 == reportedPackCount {
+		return true
+	}
+	nextOffset := offset + tailLength
+	return nextOffset < len(fields) && plausibleCellCount(fields[nextOffset])
 }
 
 func ParseProductInfo(response []byte) (string, error) {
