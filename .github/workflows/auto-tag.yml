@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout tested commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -35,6 +35,13 @@ jobs:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           git fetch --tags --force
+
+          COMMIT_MESSAGE="$(git log -1 --pretty=%B "$SHA")"
+          if printf '%s\n' "$COMMIT_MESSAGE" | grep -Eiq '\[(skip tag|skip release|no tag)\]'; then
+            echo "Commit message requested skipping the automatic release tag."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if git tag --points-at "$SHA" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Commit $SHA already has a release tag."
