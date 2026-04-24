@@ -7,7 +7,7 @@ async function loadStatus() {
 
   renderHeader(data);
   renderServices(data.service);
-  renderPower(telemetryById);
+  renderPower(telemetryById, data.packs);
   renderPacks(data.packs);
   renderTelemetry(data.telemetry);
 }
@@ -45,17 +45,24 @@ function renderServices(services) {
   });
 }
 
-function renderPower(telemetryById) {
+function renderPower(telemetryById, packs) {
   const overview = document.getElementById('power-overview');
   const batteryPower = telemetryById.battery_power;
   const dischargePower = telemetryById.battery_discharge_power;
   const chargePower = telemetryById.battery_charge_power;
+  const powerValue = Number(batteryPower?.value ?? batteryPower?.rendered ?? 0);
+  const flow = powerValue > 5 ? 'discharging' : powerValue < -5 ? 'charging' : 'idle';
+  const flowLabel = flow === 'discharging' ? 'Discharging' : flow === 'charging' ? 'Charging' : 'Idle';
+  const soc = averageSOC(packs);
   overview.innerHTML = batteryPower
     ? `
-      <div class="power-tile">
+      <div class="power-tile ${flow}">
         <div class="tile-top">
           <span class="tile-label">Battery Power</span>
-          <span class="speed-chip">MQTT</span>
+          <span class="speed-chip flow-chip">${flowLabel}</span>
+        </div>
+        <div class="battery-gauge" style="--soc:${soc ?? 0}">
+          <span>${soc !== null ? `${fmt.format(soc)}%` : '-'}</span>
         </div>
         <div class="power-value">${batteryPower.rendered}<span>${batteryPower.unit}</span></div>
         <div class="power-split">
@@ -81,7 +88,7 @@ function renderPacks(packs) {
     const cellBlocks = cells.map(mv => {
       const pct = min !== null && max !== null && max > min ? (mv - min) / (max - min) : 0.5;
       const level = pct > 0.66 ? 'high' : pct < 0.33 ? 'low' : 'mid';
-      return `<span class="cell ${level}" title="${mv} mV"></span>`;
+      return `<span class="cell ${level}" title="${mv} mV">${mv}</span>`;
     }).join('');
 
     const div = document.createElement('article');
@@ -108,6 +115,16 @@ function renderPacks(packs) {
     `;
     packsEl.appendChild(div);
   });
+}
+
+function averageSOC(packs) {
+  const values = packs
+    .filter(pack => Number.isFinite(Number(pack.soc)))
+    .map(pack => Number(pack.soc));
+  if (!values.length) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function renderTelemetry(telemetry) {
