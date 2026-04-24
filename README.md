@@ -39,6 +39,12 @@ For Linux deployments, prefer a stable udev symlink such as `/dev/pace-bms` inst
 
 Deployment notes and a `systemd` unit are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
+## Releases
+
+GitHub Actions builds and tests every push to `main` and every pull request.
+
+Pushing a tag such as `v0.0.1` creates a GitHub release with Linux `amd64` and `arm64` archives. After CI succeeds on `main`, the repository also creates the next patch tag automatically and dispatches the release workflow.
+
 ## Credits
 
 Protocol behavior was cross-checked against:

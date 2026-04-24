@@ -1,0 +1,95 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, for example v0.0.1"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "Invalid release tag: $TAG" >&2
+              exit 1
+              ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build release artifacts
+        env:
+          VERSION: ${{ steps.release.outputs.tag }}
+        run: |
+          COMMIT="$(git rev-parse HEAD)"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w -X github.com/SPDG/pace-bms-mqtt-bridge/internal/buildinfo.Version=${VERSION} -X github.com/SPDG/pace-bms-mqtt-bridge/internal/buildinfo.Commit=${COMMIT} -X github.com/SPDG/pace-bms-mqtt-bridge/internal/buildinfo.BuildDate=${BUILD_DATE}"
+
+          mkdir -p dist
+          for ARCH in amd64 arm64; do
+            OUTDIR="dist/pace-bms-mqtt-bridge_${VERSION}_linux_${ARCH}"
+            mkdir -p "$OUTDIR"
+
+            GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 \
+              go build -ldflags "$LDFLAGS" -o "$OUTDIR/pace-bms-mqtt-bridge" ./cmd/pace-bms-mqtt-bridge
+            GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 \
+              go build -ldflags "$LDFLAGS" -o "$OUTDIR/pace-bms-probe" ./cmd/pace-bms-probe
+
+            cp README.md LICENSE "$OUTDIR/"
+            cp configs/config.example.yaml "$OUTDIR/config.example.yaml"
+            cp deploy/systemd/pace-bms-mqtt-bridge.service "$OUTDIR/pace-bms-mqtt-bridge.service"
+
+            tar -C dist -czf "dist/pace-bms-mqtt-bridge_${VERSION}_linux_${ARCH}.tar.gz" "$(basename "$OUTDIR")"
+            rm -rf "$OUTDIR"
+          done
+
+          (cd dist && sha256sum *.tar.gz > checksums.txt)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.tag }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/*.tar.gz dist/checksums.txt --clobber
+          else
+            gh release create "$VERSION" dist/*.tar.gz dist/checksums.txt \
+              --verify-tag \
+              --generate-notes \
+              --title "$VERSION"
+          fi

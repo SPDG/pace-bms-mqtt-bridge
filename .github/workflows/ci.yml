@@ -1,16 +1,50 @@
-name: CI
+name: ci
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
-  test:
+  test-and-build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.24.x'
-      - run: go test ./...
-      - run: go build ./cmd/pace-bms-mqtt-bridge ./cmd/pace-bms-probe
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build linux amd64
+        run: |
+          mkdir -p dist/linux_amd64
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o dist/linux_amd64/pace-bms-mqtt-bridge ./cmd/pace-bms-mqtt-bridge
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o dist/linux_amd64/pace-bms-probe ./cmd/pace-bms-probe
+
+      - name: Build linux arm64
+        run: |
+          mkdir -p dist/linux_arm64
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w" -o dist/linux_arm64/pace-bms-mqtt-bridge ./cmd/pace-bms-mqtt-bridge
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w" -o dist/linux_arm64/pace-bms-probe ./cmd/pace-bms-probe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pace-bms-mqtt-bridge-linux-builds
+          path: dist/
