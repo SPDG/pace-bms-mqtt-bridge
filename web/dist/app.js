@@ -1,8 +1,10 @@
 const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+let latestStatus = null;
 
 async function loadStatus() {
   const res = await fetch('/api/v1/status');
   const data = await res.json();
+  latestStatus = data;
   const telemetryById = Object.fromEntries(data.telemetry.map(item => [item.id, item]));
 
   renderHeader(data);
@@ -10,6 +12,51 @@ async function loadStatus() {
   renderPower(telemetryById, data.packs);
   renderPacks(data.packs);
   renderTelemetry(data.telemetry);
+  renderHAConfig(data);
+  renderSettings(data);
+}
+
+function initNavigation() {
+  const rail = document.getElementById('rail');
+  const expanded = localStorage.getItem('railExpanded') === 'true';
+  document.body.classList.toggle('rail-expanded', expanded);
+  rail.classList.toggle('expanded', expanded);
+
+  document.getElementById('rail-toggle').addEventListener('click', () => {
+    const next = !document.body.classList.contains('rail-expanded');
+    document.body.classList.toggle('rail-expanded', next);
+    rail.classList.toggle('expanded', next);
+    localStorage.setItem('railExpanded', String(next));
+  });
+
+  document.querySelectorAll('[data-tab]').forEach(button => {
+    button.addEventListener('click', () => activateTab(button.dataset.tab));
+  });
+
+  document.querySelectorAll('[data-copy-target]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const target = document.getElementById(button.dataset.copyTarget);
+      await copyText(target.textContent);
+      const previous = button.textContent;
+      button.textContent = 'Copied';
+      window.setTimeout(() => {
+        button.textContent = previous;
+      }, 1200);
+    });
+  });
+}
+
+function activateTab(tab) {
+  document.querySelectorAll('[data-tab]').forEach(button => {
+    button.classList.toggle('active', button.dataset.tab === tab);
+  });
+  document.querySelectorAll('.tab-view').forEach(view => {
+    view.classList.toggle('active', view.id === `view-${tab}`);
+  });
+  if (latestStatus) {
+    renderHAConfig(latestStatus);
+    renderSettings(latestStatus);
+  }
 }
 
 function renderHeader(data) {
@@ -127,6 +174,26 @@ function averageSOC(packs) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall back to a temporary textarea for non-secure HTTP contexts.
+    }
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
 function renderTelemetry(telemetry) {
   const telemetryEl = document.getElementById('telemetry');
   const subtitle = document.getElementById('telemetry-subtitle');
@@ -141,6 +208,185 @@ function renderTelemetry(telemetry) {
   });
 }
 
+function renderHAConfig(data) {
+  const target = document.getElementById('ha-yaml');
+  if (!target) {
+    return;
+  }
+  target.textContent = generateDashboardYAML(data);
+}
+
+function renderSettings(data) {
+  setDefinitionList('settings-runtime', [
+    ['Version', data.build?.version ?? '-'],
+    ['Commit', data.build?.commit ?? '-'],
+    ['Build date', data.build?.buildDate ?? '-'],
+    ['Config path', data.runtime?.configPath ?? '-'],
+    ['Uptime', data.runtime?.uptime ?? '-'],
+    ['HTTP listen', data.http?.listen ?? '-'],
+    ['Log level', data.logging?.level ?? '-'],
+  ]);
+  setDefinitionList('settings-serial', [
+    ['Port', data.serial?.port ?? '-'],
+    ['Protocol', data.device?.protocol ?? '-'],
+    ['Baud rate', data.serial?.baudRate ?? '-'],
+    ['Frame', `${data.serial?.dataBits ?? '-'}${data.serial?.parity ?? '-'}${data.serial?.stopBits ?? '-'}`],
+    ['Timeout', data.serial?.timeout ?? '-'],
+    ['Poll interval', data.polling?.interval ?? '-'],
+    ['Reconnect delay', data.polling?.reconnectDelay ?? '-'],
+  ]);
+  setDefinitionList('settings-mqtt', [
+    ['Broker', data.mqtt?.broker ?? '-'],
+    ['Username', data.mqtt?.username || '-'],
+    ['Password', data.mqtt?.passwordConfigured ? 'configured' : 'empty'],
+    ['Client ID', data.mqtt?.clientId ?? '-'],
+    ['Topic prefix', data.mqtt?.topicPrefix ?? '-'],
+    ['Discovery prefix', data.mqtt?.discoveryPrefix ?? '-'],
+    ['Retain', data.mqtt?.retain ? 'true' : 'false'],
+  ]);
+  setDefinitionList('settings-device', [
+    ['Name', data.device?.name ?? '-'],
+    ['Manufacturer', data.device?.manufacturer ?? '-'],
+    ['Model', data.device?.model ?? '-'],
+    ['First pack address', data.device?.firstPackAddress ?? '-'],
+    ['Max parallel packs', data.device?.maxParallelPacks ?? '-'],
+    ['Discover on startup', data.device?.discoverOnStartup ? 'true' : 'false'],
+    ['Visible packs', data.packs?.length ?? 0],
+  ]);
+}
+
+function setDefinitionList(id, rows) {
+  const el = document.getElementById(id);
+  if (!el) {
+    return;
+  }
+  el.innerHTML = rows.map(([label, value]) => `
+    <dt>${escapeHTML(label)}</dt>
+    <dd>${escapeHTML(String(value))}</dd>
+  `).join('');
+}
+
+function generateDashboardYAML(data) {
+  const packs = data.packs || [];
+  const telemetry = data.telemetry || [];
+  const entity = id => `sensor.${sanitizeEntity(data.device?.name || 'pace_main')}_${sanitizeEntity(id)}`;
+  const existing = new Set(telemetry.map(item => item.id));
+  const lines = [
+    'title: PACE BMS',
+    'views:',
+    '  - title: Battery',
+    '    path: pace-bms',
+    '    icon: mdi:battery',
+    '    cards:',
+    '      - type: entities',
+    '        title: Battery system',
+    '        show_header_toggle: false',
+    '        entities:',
+    `          - entity: ${entity('battery_power')}`,
+    `          - entity: ${entity('battery_discharge_power')}`,
+    `          - entity: ${entity('battery_charge_power')}`,
+  ];
+
+  const historyEntities = ['battery_power'];
+  for (const pack of packs) {
+    historyEntities.push(`pack_${pad2(pack.address)}_soc`);
+  }
+  lines.push(
+    '      - type: history-graph',
+    '        title: Power and SOC',
+    '        hours_to_show: 24',
+    '        entities:',
+    ...historyEntities.map(id => `          - entity: ${entity(id)}`),
+    '      - type: grid',
+    '        title: Battery packs',
+    '        columns: 2',
+    '        square: false',
+    '        cards:'
+  );
+
+  if (!packs.length) {
+    lines.push(
+      '          - type: markdown',
+      '            content: >',
+      '              No packs were visible when this YAML was generated.'
+    );
+  }
+
+  for (const pack of packs) {
+    const prefix = `pack_${pad2(pack.address)}`;
+    const entities = [
+      `${prefix}_soc`,
+      `${prefix}_voltage`,
+      `${prefix}_current`,
+      `${prefix}_power`,
+      `${prefix}_remaining_capacity`,
+      `${prefix}_full_capacity`,
+      `${prefix}_cell_voltage_min`,
+      `${prefix}_cell_voltage_max`,
+      `${prefix}_cell_voltage_diff`,
+      ...Array.from({ length: pack.temperaturesC?.length ?? 0 }, (_, index) => `${prefix}_temperature_${pad2(index + 1)}`),
+    ].filter(id => existing.has(id));
+    lines.push(
+      '          - type: entities',
+      `            title: Pack ${pad2(pack.address)}`,
+      '            show_header_toggle: false',
+      '            entities:',
+      ...entities.map(id => `              - entity: ${entity(id)}`)
+    );
+  }
+
+  lines.push(
+    '      - type: grid',
+    '        title: Cell voltage spread',
+    '        columns: 2',
+    '        square: false',
+    '        cards:'
+  );
+  if (!packs.length) {
+    lines.push(
+      '          - type: markdown',
+      '            content: >',
+      '              No cell voltage entities were visible when this YAML was generated.'
+    );
+  }
+  for (const pack of packs) {
+    const prefix = `pack_${pad2(pack.address)}`;
+    const cellEntities = Array.from({ length: pack.cellsMv?.length ?? 0 }, (_, index) => `${prefix}_cell_${pad2(index + 1)}_voltage`)
+      .filter(id => existing.has(id));
+    lines.push(
+      '          - type: entities',
+      `            title: Pack ${pad2(pack.address)} cells`,
+      '            show_header_toggle: false',
+      '            entities:',
+      ...cellEntities.map(id => `              - entity: ${entity(id)}`)
+    );
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+function sanitizeEntity(value) {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function escapeHTML(value) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+initNavigation();
 loadStatus().catch(err => {
   document.getElementById('summary').textContent = err.message;
 });

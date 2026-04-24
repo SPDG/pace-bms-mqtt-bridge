@@ -8,11 +8,12 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="rail" aria-label="Navigation">
-      <div class="rail-brand">P</div>
-      <div class="rail-item active">B</div>
-      <div class="rail-item">M</div>
-      <div class="rail-item">H</div>
+    <aside id="rail" class="rail" aria-label="Navigation">
+      <button id="rail-toggle" class="rail-toggle" type="button" title="Toggle navigation"><span class="toggle-mark"></span></button>
+      <div class="rail-brand"><span>P</span><strong>PACE BMS</strong></div>
+      <button class="rail-item active" type="button" data-tab="live"><span>B</span><strong>Live data</strong></button>
+      <button class="rail-item" type="button" data-tab="ha"><span>H</span><strong>HA config</strong></button>
+      <button class="rail-item" type="button" data-tab="settings"><span>S</span><strong>Settings</strong></button>
     </aside>
 
     <div class="workspace">
@@ -25,34 +26,73 @@
       </header>
 
       <main class="content">
-        <section class="hero-grid">
-          <div id="power-overview"></div>
-          <div id="services" class="service-grid"></div>
+        <section id="view-live" class="tab-view active">
+          <section class="hero-grid">
+            <div id="power-overview"></div>
+            <div id="services" class="service-grid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Packs</h2>
+                <p id="pack-subtitle"></p>
+              </div>
+            </div>
+            <div id="packs" class="pack-grid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Telemetry</h2>
+                <p id="telemetry-subtitle"></p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Name</th><th>Value</th><th>Updated</th></tr></thead>
+                <tbody id="telemetry"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Packs</h2>
-              <p id="pack-subtitle"></p>
+        <section id="view-ha" class="tab-view">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Home Assistant YAML</h2>
+                <p>Generated from visible packs and MQTT Discovery entity naming.</p>
+              </div>
+              <button class="action-button" type="button" data-copy-target="ha-yaml">Copy YAML</button>
             </div>
-          </div>
-          <div id="packs" class="pack-grid"></div>
+            <div class="config-body">
+              <p class="hint">If Home Assistant renamed an entity, keep the card structure and replace only the affected <code>entity:</code> value.</p>
+              <pre><code id="ha-yaml"></code></pre>
+            </div>
+          </section>
         </section>
 
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Telemetry</h2>
-              <p id="telemetry-subtitle"></p>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Name</th><th>Value</th><th>Updated</th></tr></thead>
-              <tbody id="telemetry"></tbody>
-            </table>
-          </div>
+        <section id="view-settings" class="tab-view">
+          <section class="settings-grid">
+            <article class="panel settings-card">
+              <div class="panel-header"><h2>Runtime</h2></div>
+              <dl id="settings-runtime"></dl>
+            </article>
+            <article class="panel settings-card">
+              <div class="panel-header"><h2>Serial</h2></div>
+              <dl id="settings-serial"></dl>
+            </article>
+            <article class="panel settings-card">
+              <div class="panel-header"><h2>MQTT</h2></div>
+              <dl id="settings-mqtt"></dl>
+            </article>
+            <article class="panel settings-card">
+              <div class="panel-header"><h2>Device</h2></div>
+              <dl id="settings-device"></dl>
+            </article>
+          </section>
         </section>
       </main>
     </div>

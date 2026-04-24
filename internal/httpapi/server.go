@@ -77,9 +77,25 @@ func (h *Handler) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		"service":   snapshot.Services,
 		"device":    cfg.Device,
 		"serial":    cfg.Serial,
+		"polling":   cfg.Polling,
+		"http":      cfg.HTTP,
+		"logging":   cfg.Logging,
+		"mqtt":      publicMQTTConfig(cfg.MQTT),
 		"packs":     snapshot.Packs,
 		"telemetry": snapshot.Telemetry,
 	})
+}
+
+func publicMQTTConfig(cfg config.MQTTConfig) map[string]any {
+	return map[string]any{
+		"broker":             cfg.Broker,
+		"username":           cfg.Username,
+		"passwordConfigured": cfg.Password != "",
+		"clientId":           cfg.ClientID,
+		"topicPrefix":        cfg.TopicPrefix,
+		"discoveryPrefix":    cfg.DiscoveryPrefix,
+		"retain":             cfg.Retain,
+	}
 }
 
 func (h *Handler) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
