@@ -605,6 +605,33 @@ pre {
   cursor: pointer;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mode-option {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #33404f;
+  border-radius: 7px;
+  background: #151a1f;
+  color: #c8d3df;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.mode-option input {
+  accent-color: #34aaf4;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(320px, 1fr));

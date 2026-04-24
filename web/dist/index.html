@@ -63,9 +63,13 @@
             <div class="panel-header">
               <div>
                 <h2>Home Assistant YAML</h2>
-                <p>Generated from visible packs and MQTT Discovery entity naming.</p>
+                <p>Generated as a Home Assistant sections view.</p>
               </div>
-              <button class="action-button" type="button" data-copy-target="ha-yaml">Copy YAML</button>
+              <div class="panel-actions">
+                <label class="mode-option"><input type="radio" name="ha-yaml-mode" value="dashboard" checked> Dashboard</label>
+                <label class="mode-option"><input type="radio" name="ha-yaml-mode" value="tab"> Tab</label>
+                <button class="action-button" type="button" data-copy-target="ha-yaml">Copy YAML</button>
+              </div>
             </div>
             <div class="config-body">
               <p class="hint">If Home Assistant renamed an entity, keep the card structure and replace only the affected <code>entity:</code> value.</p>

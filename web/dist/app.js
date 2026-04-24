@@ -1,5 +1,6 @@
 const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 let latestStatus = null;
+let haYamlMode = localStorage.getItem('haYamlMode') || 'dashboard';
 
 async function loadStatus() {
   const res = await fetch('/api/v1/status');
@@ -42,6 +43,17 @@ function initNavigation() {
       window.setTimeout(() => {
         button.textContent = previous;
       }, 1200);
+    });
+  });
+
+  document.querySelectorAll('input[name="ha-yaml-mode"]').forEach(input => {
+    input.checked = input.value === haYamlMode;
+    input.addEventListener('change', () => {
+      haYamlMode = input.value;
+      localStorage.setItem('haYamlMode', haYamlMode);
+      if (latestStatus) {
+        renderHAConfig(latestStatus);
+      }
     });
   });
 }
@@ -213,7 +225,7 @@ function renderHAConfig(data) {
   if (!target) {
     return;
   }
-  target.textContent = generateDashboardYAML(data);
+  target.textContent = generateDashboardYAML(data, haYamlMode);
 }
 
 function renderSettings(data) {
@@ -266,25 +278,42 @@ function setDefinitionList(id, rows) {
   `).join('');
 }
 
-function generateDashboardYAML(data) {
+function generateDashboardYAML(data, mode) {
+  const view = generateSectionsViewYAML(data);
+  if (mode === 'tab') {
+    return `${view.join('\n')}\n`;
+  }
+  return `title: PACE BMS\nviews:\n${viewAsListItem(view)}\n`;
+}
+
+function generateSectionsViewYAML(data) {
   const packs = data.packs || [];
   const telemetry = data.telemetry || [];
   const entity = id => `sensor.${sanitizeEntity(data.device?.name || 'pace_main')}_${sanitizeEntity(id)}`;
   const existing = new Set(telemetry.map(item => item.id));
   const lines = [
+    'type: sections',
     'title: PACE BMS',
-    'views:',
-    '  - title: Battery',
-    '    path: pace-bms',
-    '    icon: mdi:battery',
+    'path: pace-bms',
+    'icon: mdi:battery',
+    'max_columns: 4',
+    'sections:',
+    '  - type: grid',
     '    cards:',
-    '      - type: entities',
-    '        title: Battery system',
-    '        show_header_toggle: false',
-    '        entities:',
-    `          - entity: ${entity('battery_power')}`,
-    `          - entity: ${entity('battery_discharge_power')}`,
-    `          - entity: ${entity('battery_charge_power')}`,
+    '      - type: heading',
+    '        heading: Battery system',
+    '      - type: tile',
+    `        entity: ${entity('battery_power')}`,
+    '        name: Battery Power',
+    '        vertical: false',
+    '      - type: tile',
+    `        entity: ${entity('battery_discharge_power')}`,
+    '        name: Discharge Power',
+    '        vertical: false',
+    '      - type: tile',
+    `        entity: ${entity('battery_charge_power')}`,
+    '        name: Charge Power',
+    '        vertical: false',
   ];
 
   const historyEntities = ['battery_power'];
@@ -297,18 +326,17 @@ function generateDashboardYAML(data) {
     '        hours_to_show: 24',
     '        entities:',
     ...historyEntities.map(id => `          - entity: ${entity(id)}`),
-    '      - type: grid',
-    '        title: Battery packs',
-    '        columns: 2',
-    '        square: false',
-    '        cards:'
+    '  - type: grid',
+    '    cards:',
+    '      - type: heading',
+    '        heading: Battery packs'
   );
 
   if (!packs.length) {
     lines.push(
-      '          - type: markdown',
-      '            content: >',
-      '              No packs were visible when this YAML was generated.'
+      '      - type: markdown',
+      '        content: >',
+      '          No packs were visible when this YAML was generated.'
     );
   }
 
@@ -327,26 +355,26 @@ function generateDashboardYAML(data) {
       ...Array.from({ length: pack.temperaturesC?.length ?? 0 }, (_, index) => `${prefix}_temperature_${pad2(index + 1)}`),
     ].filter(id => existing.has(id));
     lines.push(
-      '          - type: entities',
-      `            title: Pack ${pad2(pack.address)}`,
-      '            show_header_toggle: false',
-      '            entities:',
-      ...entities.map(id => `              - entity: ${entity(id)}`)
+      '      - type: entities',
+      `        title: Pack ${pad2(pack.address)}`,
+      '        show_header_toggle: false',
+      '        entities:',
+      ...entities.map(id => `          - entity: ${entity(id)}`)
     );
   }
 
   lines.push(
-    '      - type: grid',
-    '        title: Cell voltage spread',
-    '        columns: 2',
-    '        square: false',
-    '        cards:'
+    '  - type: grid',
+    '    column_span: 2',
+    '    cards:',
+    '      - type: heading',
+    '        heading: Cell voltage spread'
   );
   if (!packs.length) {
     lines.push(
-      '          - type: markdown',
-      '            content: >',
-      '              No cell voltage entities were visible when this YAML was generated.'
+      '      - type: markdown',
+      '        content: >',
+      '          No cell voltage entities were visible when this YAML was generated.'
     );
   }
   for (const pack of packs) {
@@ -354,15 +382,24 @@ function generateDashboardYAML(data) {
     const cellEntities = Array.from({ length: pack.cellsMv?.length ?? 0 }, (_, index) => `${prefix}_cell_${pad2(index + 1)}_voltage`)
       .filter(id => existing.has(id));
     lines.push(
-      '          - type: entities',
-      `            title: Pack ${pad2(pack.address)} cells`,
-      '            show_header_toggle: false',
-      '            entities:',
-      ...cellEntities.map(id => `              - entity: ${entity(id)}`)
+      '      - type: entities',
+      `        title: Pack ${pad2(pack.address)} cells`,
+      '        show_header_toggle: false',
+      '        entities:',
+      ...cellEntities.map(id => `          - entity: ${entity(id)}`)
     );
   }
 
-  return `${lines.join('\n')}\n`;
+  return lines;
+}
+
+function viewAsListItem(lines) {
+  return lines.map((line, index) => {
+    if (index === 0) {
+      return `  - ${line}`;
+    }
+    return `    ${line}`;
+  }).join('\n');
 }
 
 function sanitizeEntity(value) {
