@@ -2,6 +2,9 @@ package pace
 
 import (
 	"fmt"
+	"io"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/goburrow/serial"
@@ -10,20 +13,13 @@ import (
 )
 
 type Client struct {
-	port     serial.Port
+	port     io.ReadWriteCloser
 	protocol Protocol
 	timeout  time.Duration
 }
 
 func Open(cfg config.Config) (*Client, error) {
-	port, err := serial.Open(&serial.Config{
-		Address:  cfg.Serial.Port,
-		BaudRate: cfg.Serial.BaudRate,
-		DataBits: cfg.Serial.DataBits,
-		Parity:   cfg.Serial.Parity,
-		StopBits: cfg.Serial.StopBits,
-		Timeout:  cfg.Serial.Timeout.Duration,
-	})
+	port, err := openTransport(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +41,9 @@ func (c *Client) Query(command Command, pack uint8) ([]byte, error) {
 	request, err := BuildRequest(Request{Protocol: c.protocol, Command: command, Pack: pack})
 	if err != nil {
 		return nil, err
+	}
+	if conn, ok := c.port.(interface{ SetDeadline(time.Time) error }); ok {
+		_ = conn.SetDeadline(time.Now().Add(c.timeout))
 	}
 	if _, err := c.port.Write(request); err != nil {
 		return nil, fmt.Errorf("write request: %w", err)
@@ -81,4 +80,34 @@ func (c *Client) AnalogPacks(pack uint8) ([]Pack, error) {
 		return nil, err
 	}
 	return ParseAnalogPacks(response, pack)
+}
+
+func openTransport(cfg config.Config) (io.ReadWriteCloser, error) {
+	if address, ok := tcpAddress(cfg.Serial.Port); ok {
+		timeout := cfg.Serial.Timeout.Duration
+		if timeout <= 0 {
+			timeout = 3 * time.Second
+		}
+		return net.DialTimeout("tcp", address, timeout)
+	}
+	return serial.Open(&serial.Config{
+		Address:  cfg.Serial.Port,
+		BaudRate: cfg.Serial.BaudRate,
+		DataBits: cfg.Serial.DataBits,
+		Parity:   cfg.Serial.Parity,
+		StopBits: cfg.Serial.StopBits,
+		Timeout:  cfg.Serial.Timeout.Duration,
+	})
+}
+
+func tcpAddress(port string) (string, bool) {
+	port = strings.TrimSpace(port)
+	switch {
+	case strings.HasPrefix(port, "tcp://"):
+		return strings.TrimPrefix(port, "tcp://"), true
+	case strings.HasPrefix(port, "tcp:"):
+		return strings.TrimPrefix(port, "tcp:"), true
+	default:
+		return "", false
+	}
 }

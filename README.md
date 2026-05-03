@@ -37,6 +37,8 @@ See [`configs/config.example.yaml`](configs/config.example.yaml).
 
 For Linux deployments, prefer a stable udev symlink such as `/dev/pace-bms` instead of raw `/dev/ttyUSB*`.
 
+Serial-over-Ethernet converters can be used by setting `serial.port` to a TCP endpoint such as `tcp://192.168.6.134:4196`. The converter should run in transparent TCP server mode with the same serial parameters configured in `serial`.
+
 Deployment notes and a `systemd` unit are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Releases
