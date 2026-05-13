@@ -12,6 +12,7 @@ async function loadStatus() {
   renderServices(data.service);
   renderPower(telemetryById, data.packs);
   renderPacks(data.packs);
+  renderControls(data.packs);
   renderTelemetry(data.telemetry);
   renderHAConfig(data);
   renderSettings(data);
@@ -149,6 +150,10 @@ function renderPacks(packs) {
       const level = pct > 0.66 ? 'high' : pct < 0.33 ? 'low' : 'mid';
       return `<span class="cell ${level}" title="${mv} mV">${mv}</span>`;
     }).join('');
+    const tempBlocks = (pack.temperaturesC || []).map((temp, index) => {
+      const label = temperatureLabel(index);
+      return `<span class="temp-chip ${temperatureLevel(temp)}" title="Probe ${pad2(index + 1)} · ${label}">${escapeHTML(label)} <strong>${fmt.format(temp)}°C</strong></span>`;
+    }).join('');
 
     const div = document.createElement('article');
     div.className = 'pack-card';
@@ -165,6 +170,7 @@ function renderPacks(packs) {
         <span><strong>${fmt.format(pack.currentA)}</strong> A</span>
         <span><strong>${fmt.format(pack.powerKw * 1000)}</strong> W</span>
       </div>
+      <div class="temp-map">${tempBlocks || '<span class="muted">No temperature probes</span>'}</div>
       <div class="cell-map">${cellBlocks}</div>
       <div class="cell-summary">
         <span>Min ${min ?? '-'} mV</span>
@@ -174,6 +180,118 @@ function renderPacks(packs) {
     `;
     packsEl.appendChild(div);
   });
+}
+
+function renderControls(packs) {
+  const controlsEl = document.getElementById('controls');
+  if (!controlsEl) {
+    return;
+  }
+  const intro = `
+    <article class="control-card overview">
+      <div class="control-head">
+        <h3>Writable candidates</h3>
+        <span class="speed-chip">disabled</span>
+      </div>
+      <div class="control-actions">
+        <span>Charge MOS setpoint</span>
+        <span>Discharge MOS setpoint</span>
+      </div>
+    </article>
+  `;
+  const cards = (packs || []).map(pack => renderControlCard(pack)).join('');
+  controlsEl.innerHTML = intro + (cards || '<article class="control-card"><p>No packs visible.</p></article>');
+}
+
+function renderControlCard(pack) {
+  const status = pack.status;
+  const updated = status?.updatedAt ? new Date(status.updatedAt).toLocaleTimeString() : '-';
+  const rows = [
+    ['Charge MOS', status?.instruction?.chargeEnabled, 'enabled'],
+    ['Discharge MOS', status?.instruction?.dischargeEnabled, 'enabled'],
+    ['Current limit', status?.instruction?.currentLimitEnabled, 'neutral'],
+    ['Charger available', status?.instruction?.chargerAvailable, 'neutral'],
+    ['Reverse connected', status?.instruction?.reverseConnected, 'neutral'],
+    ['Fully charged', status?.protection?.fullyCharged, 'neutral'],
+    ['Buzzer warn function', status?.control?.buzzerWarnFunction, 'neutral'],
+    ['LED warn function', status?.control?.ledWarnFunction, 'neutral'],
+    ['Current limit function', status?.control?.currentLimitFunction, 'neutral'],
+    ['Current limit gear', status?.control?.currentLimitGear, 'neutral'],
+    ['Charge MOS fault', status?.fault?.chargeMos, 'alert'],
+    ['Discharge MOS fault', status?.fault?.dischargeMos, 'alert'],
+    ['High MOS temp warning', status?.warning?.highMosTemp, 'alert'],
+    ['Low environment temp warning', status?.warning?.lowEnvironmentTemp, 'alert'],
+    ['High environment temp warning', status?.warning?.highEnvironmentTemp, 'alert'],
+  ];
+  return `
+    <article class="control-card">
+      <div class="control-head">
+        <div>
+          <h3>Pack ${pad2(pack.address)}</h3>
+          <p>${status ? `Readback ${updated}` : 'Waiting for warning/status frame'}</p>
+        </div>
+        <span class="speed-chip">read-only</span>
+      </div>
+      <div class="status-list">
+        ${rows.map(([label, value, mode]) => statusRow(label, value, mode)).join('')}
+      </div>
+    </article>
+  `;
+}
+
+function statusRow(label, value, mode = 'neutral') {
+  const known = typeof value === 'boolean';
+  const active = known && value;
+  const cls = statusClass(value, mode);
+  return `
+    <div class="status-row ${cls}">
+      <span>${escapeHTML(label)}</span>
+      <strong>${known ? (active ? 'on' : 'off') : '-'}</strong>
+    </div>
+  `;
+}
+
+function statusClass(value, mode) {
+  if (typeof value !== 'boolean') {
+    return 'unknown';
+  }
+  if (mode === 'alert') {
+    return value ? 'alert' : 'good';
+  }
+  if (mode === 'enabled') {
+    return value ? 'good' : 'alert';
+  }
+  return 'neutral';
+}
+
+function temperatureLabel(index) {
+  if (index < 4) {
+    return `Cell ${index + 1}`;
+  }
+  if (index === 4) {
+    return 'BMS';
+  }
+  if (index === 5) {
+    return 'Ambient';
+  }
+  return `Probe ${index + 1}`;
+}
+
+function temperatureLevel(temp) {
+  const value = Number(temp);
+  if (!Number.isFinite(value)) {
+    return 'unknown';
+  }
+  if (value < 18) {
+    return 'cold';
+  }
+  if (value <= 27) {
+    return 'ok';
+  }
+  if (value <= 35) {
+    return 'warm';
+  }
+  return 'hot';
 }
 
 function averageSOC(packs) {
@@ -244,7 +362,8 @@ function renderSettings(data) {
     ['Baud rate', data.serial?.baudRate ?? '-'],
     ['Frame', `${data.serial?.dataBits ?? '-'}${data.serial?.parity ?? '-'}${data.serial?.stopBits ?? '-'}`],
     ['Timeout', data.serial?.timeout ?? '-'],
-    ['Poll interval', data.polling?.interval ?? '-'],
+    ['Analog poll interval', data.polling?.interval ?? '-'],
+    ['Status poll interval', data.polling?.statusInterval ?? '-'],
     ['Reconnect delay', data.polling?.reconnectDelay ?? '-'],
   ]);
   setDefinitionList('settings-mqtt', [
@@ -427,4 +546,4 @@ initNavigation();
 loadStatus().catch(err => {
   document.getElementById('summary').textContent = err.message;
 });
-setInterval(loadStatus, 5000);
+setInterval(loadStatus, 2000);

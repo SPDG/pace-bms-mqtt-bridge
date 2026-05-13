@@ -82,6 +82,14 @@ func (c *Client) AnalogPacks(pack uint8) ([]Pack, error) {
 	return ParseAnalogPacks(response, pack)
 }
 
+func (c *Client) WarningPacks(pack uint8) ([]PackStatus, error) {
+	response, err := c.Query(CommandWarningInfo, pack)
+	if err != nil {
+		return nil, err
+	}
+	return ParseWarningPacks(response, pack)
+}
+
 func openTransport(cfg config.Config) (io.ReadWriteCloser, error) {
 	if address, ok := tcpAddress(cfg.Serial.Port); ok {
 		timeout := cfg.Serial.Timeout.Duration

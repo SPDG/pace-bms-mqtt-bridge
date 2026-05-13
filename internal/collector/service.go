@@ -16,9 +16,10 @@ type ConfigProvider interface {
 }
 
 type Service struct {
-	provider ConfigProvider
-	state    *state.Store
-	packs    []uint8
+	provider       ConfigProvider
+	state          *state.Store
+	packs          []uint8
+	lastStatusPoll time.Time
 }
 
 func NewService(provider ConfigProvider, runtimeState *state.Store) *Service {
@@ -78,6 +79,8 @@ func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.
 
 	var lastErr error
 	success := 0
+	statusDue := s.lastStatusPoll.IsZero() || time.Since(s.lastStatusPoll) >= cfg.Polling.StatusInterval.Duration
+	statusAttempted := false
 	for _, pack := range s.packs {
 		select {
 		case <-ctx.Done():
@@ -93,6 +96,22 @@ func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.
 			s.state.UpsertPack(analog)
 			success++
 		}
+		if !statusDue {
+			continue
+		}
+		statusAttempted = true
+		statuses, err := client.WarningPacks(pack)
+		if err != nil {
+			lastErr = fmt.Errorf("pack %d warning: %w", pack, err)
+			log.Printf("pace warning poll failed: %v", lastErr)
+			continue
+		}
+		for _, status := range statuses {
+			s.state.UpsertPackStatus(status)
+		}
+	}
+	if statusAttempted {
+		s.lastStatusPoll = time.Now()
 	}
 	if success == 0 && lastErr != nil {
 		return lastErr

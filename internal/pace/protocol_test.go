@@ -87,6 +87,63 @@ func TestParseAnalogRejectsImplausibleCellVoltage(t *testing.T) {
 	}
 }
 
+func TestParseAnalogBroadcastSinglePackUsesPhysicalAddress(t *testing.T) {
+	info := []byte{
+		0x00, 0x01,
+		0x01, 0x0C, 0xE4,
+		0x01, 0x0B, 0xC2,
+		0x00, 0x00, 0xCE, 0x4C, 0x00, 0x64, 0x00, 0x00, 0x64,
+	}
+	raw := analogFrame(info)
+	packs, err := ParseAnalogPacks([]byte(raw), 255)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packs) != 1 {
+		t.Fatalf("pack count = %d", len(packs))
+	}
+	if packs[0].Address != 1 {
+		t.Fatalf("pack address = %d, want 1", packs[0].Address)
+	}
+}
+
+func TestParseWarningPacks(t *testing.T) {
+	info := []byte{
+		0x00, 0x01,
+		0x02, 0x00, 0x02,
+		0x03, 0x00, 0x01, 0x00,
+		0x00, 0x00, 0x02,
+		0x70, 0xB0,
+		0x27,
+		0x39,
+		0x07,
+		0x12, 0x34,
+		0x33, 0xF5,
+		0x00,
+	}
+	raw := analogFrame(info)
+	statuses, err := ParseWarningPacks([]byte(raw), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 1 {
+		t.Fatalf("status count = %d", len(statuses))
+	}
+	status := statuses[0]
+	if !status.Instruction.ChargeEnabled || !status.Instruction.DischargeEnabled || !status.Instruction.ChargerAvailable {
+		t.Fatalf("instruction bits not decoded: %+v", status.Instruction)
+	}
+	if !status.Protection.ShortCircuit || !status.Protection.FullyCharged || !status.Protection.HighEnvironmentTemp {
+		t.Fatalf("protection bits not decoded: %+v", status.Protection)
+	}
+	if !status.Fault.ChargeMOS || !status.Fault.DischargeMOS || !status.Fault.NTC {
+		t.Fatalf("fault bits not decoded: %+v", status.Fault)
+	}
+	if status.DischargeCurrentWarning != "above upper limit" {
+		t.Fatalf("discharge current warning = %q", status.DischargeCurrentWarning)
+	}
+}
+
 func analogFrame(info []byte) string {
 	body := "~25014600" + lengthChecksum(hexLen(info)) + hexLen(info) + fmt.Sprintf("%X", info)
 	return body + payloadChecksum([]byte(body)) + "\r"

@@ -8,22 +8,101 @@ import (
 )
 
 type Pack struct {
-	Address             uint8     `json:"address"`
-	InfoFlag            uint8     `json:"infoFlag"`
-	ReportedPackCount   uint8     `json:"reportedPackCount"`
-	CellsMV             []int     `json:"cellsMv"`
-	TemperaturesC       []float64 `json:"temperaturesC"`
-	CurrentA            float64   `json:"currentA"`
-	VoltageV            float64   `json:"voltageV"`
-	PowerKW             float64   `json:"powerKw"`
-	RemainingCapacityAh float64   `json:"remainingCapacityAh"`
-	FullCapacityAh      float64   `json:"fullCapacityAh"`
-	DesignCapacityAh    float64   `json:"designCapacityAh"`
-	SOC                 float64   `json:"soc"`
-	SOH                 float64   `json:"soh"`
-	CycleCount          int       `json:"cycleCount"`
-	DefinedNumberP      uint8     `json:"definedNumberP"`
-	UpdatedAt           time.Time `json:"updatedAt"`
+	Address             uint8       `json:"address"`
+	InfoFlag            uint8       `json:"infoFlag"`
+	ReportedPackCount   uint8       `json:"reportedPackCount"`
+	CellsMV             []int       `json:"cellsMv"`
+	TemperaturesC       []float64   `json:"temperaturesC"`
+	Status              *PackStatus `json:"status,omitempty"`
+	CurrentA            float64     `json:"currentA"`
+	VoltageV            float64     `json:"voltageV"`
+	PowerKW             float64     `json:"powerKw"`
+	RemainingCapacityAh float64     `json:"remainingCapacityAh"`
+	FullCapacityAh      float64     `json:"fullCapacityAh"`
+	DesignCapacityAh    float64     `json:"designCapacityAh"`
+	SOC                 float64     `json:"soc"`
+	SOH                 float64     `json:"soh"`
+	CycleCount          int         `json:"cycleCount"`
+	DefinedNumberP      uint8       `json:"definedNumberP"`
+	UpdatedAt           time.Time   `json:"updatedAt"`
+}
+
+type PackStatus struct {
+	Address                 uint8             `json:"address"`
+	InfoFlag                uint8             `json:"infoFlag"`
+	CellCount               int               `json:"cellCount"`
+	TemperatureCount        int               `json:"temperatureCount"`
+	CellWarnings            []string          `json:"cellWarnings,omitempty"`
+	TemperatureWarnings     []string          `json:"temperatureWarnings,omitempty"`
+	ChargeCurrentWarning    string            `json:"chargeCurrentWarning,omitempty"`
+	TotalVoltageWarning     string            `json:"totalVoltageWarning,omitempty"`
+	DischargeCurrentWarning string            `json:"dischargeCurrentWarning,omitempty"`
+	Protection              ProtectionStatus  `json:"protection"`
+	Instruction             InstructionStatus `json:"instruction"`
+	Control                 ControlStatus     `json:"control"`
+	Fault                   FaultStatus       `json:"fault"`
+	Warning                 WarningStatus     `json:"warning"`
+	BalanceState1           uint8             `json:"balanceState1"`
+	BalanceState2           uint8             `json:"balanceState2"`
+	UpdatedAt               time.Time         `json:"updatedAt"`
+}
+
+type ProtectionStatus struct {
+	ShortCircuit         bool `json:"shortCircuit"`
+	HighDischargeCurrent bool `json:"highDischargeCurrent"`
+	HighChargeCurrent    bool `json:"highChargeCurrent"`
+	LowTotalVoltage      bool `json:"lowTotalVoltage"`
+	HighTotalVoltage     bool `json:"highTotalVoltage"`
+	LowCellVoltage       bool `json:"lowCellVoltage"`
+	HighCellVoltage      bool `json:"highCellVoltage"`
+	FullyCharged         bool `json:"fullyCharged"`
+	LowEnvironmentTemp   bool `json:"lowEnvironmentTemp"`
+	HighEnvironmentTemp  bool `json:"highEnvironmentTemp"`
+	HighMOSTemp          bool `json:"highMosTemp"`
+	LowDischargeTemp     bool `json:"lowDischargeTemp"`
+	LowChargeTemp        bool `json:"lowChargeTemp"`
+	HighDischargeTemp    bool `json:"highDischargeTemp"`
+	HighChargeTemp       bool `json:"highChargeTemp"`
+}
+
+type InstructionStatus struct {
+	ChargerAvailable    bool `json:"chargerAvailable"`
+	ReverseConnected    bool `json:"reverseConnected"`
+	DischargeEnabled    bool `json:"dischargeEnabled"`
+	ChargeEnabled       bool `json:"chargeEnabled"`
+	CurrentLimitEnabled bool `json:"currentLimitEnabled"`
+}
+
+type ControlStatus struct {
+	LEDWarnFunction      bool `json:"ledWarnFunction"`
+	CurrentLimitFunction bool `json:"currentLimitFunction"`
+	CurrentLimitGear     bool `json:"currentLimitGear"`
+	BuzzerWarnFunction   bool `json:"buzzerWarnFunction"`
+}
+
+type FaultStatus struct {
+	Sampling     bool `json:"sampling"`
+	Cell         bool `json:"cell"`
+	NTC          bool `json:"ntc"`
+	DischargeMOS bool `json:"dischargeMos"`
+	ChargeMOS    bool `json:"chargeMos"`
+}
+
+type WarningStatus struct {
+	HighDischargeCurrent bool `json:"highDischargeCurrent"`
+	HighChargeCurrent    bool `json:"highChargeCurrent"`
+	LowTotalVoltage      bool `json:"lowTotalVoltage"`
+	HighTotalVoltage     bool `json:"highTotalVoltage"`
+	LowCellVoltage       bool `json:"lowCellVoltage"`
+	HighCellVoltage      bool `json:"highCellVoltage"`
+	LowSOC               bool `json:"lowSoc"`
+	HighMOSTemp          bool `json:"highMosTemp"`
+	LowEnvironmentTemp   bool `json:"lowEnvironmentTemp"`
+	HighEnvironmentTemp  bool `json:"highEnvironmentTemp"`
+	LowDischargeTemp     bool `json:"lowDischargeTemp"`
+	LowChargeTemp        bool `json:"lowChargeTemp"`
+	HighDischargeTemp    bool `json:"highDischargeTemp"`
+	HighChargeTemp       bool `json:"highChargeTemp"`
 }
 
 type Telemetry struct {

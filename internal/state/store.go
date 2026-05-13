@@ -58,10 +58,22 @@ func (s *Store) SetServiceStatus(name, status string, connected bool, lastError 
 func (s *Store) UpsertPack(pack pace.Pack) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if existing, ok := s.packs[pack.Address]; ok && pack.Status == nil {
+		pack.Status = existing.Status
+	}
 	s.packs[pack.Address] = pack
 	for _, value := range pace.TelemetryForPack(pack) {
 		s.telemetry[value.ID] = value
 	}
+}
+
+func (s *Store) UpsertPackStatus(status pace.PackStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pack := s.packs[status.Address]
+	pack.Address = status.Address
+	pack.Status = &status
+	s.packs[status.Address] = pack
 }
 
 func (s *Store) Snapshot() Snapshot {

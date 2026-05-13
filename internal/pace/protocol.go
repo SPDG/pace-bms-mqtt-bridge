@@ -163,7 +163,7 @@ func ParseAnalogPacks(response []byte, requestedPack uint8) ([]Pack, error) {
 	packs := make([]Pack, 0, int(reportedPackCount))
 	for packIndex := 0; packIndex < int(reportedPackCount); packIndex++ {
 		address := requestedPack
-		if reportedPackCount > 1 {
+		if reportedPackCount > 1 || requestedPack == 255 {
 			address = uint8(packIndex + 1)
 		}
 		p := Pack{Address: address, InfoFlag: infoFlag, ReportedPackCount: reportedPackCount, UpdatedAt: time.Now().UTC()}
@@ -292,6 +292,182 @@ func ParseProductInfo(response []byte) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(data.Info)), nil
+}
+
+func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return nil, err
+	}
+	fields := data.Info
+	if len(fields) < 2 {
+		return nil, fmt.Errorf("warning payload too short")
+	}
+
+	offset := 0
+	infoFlag := fields[offset]
+	offset++
+	reportedPackCount := int(fields[offset])
+	offset++
+	if reportedPackCount == 0 {
+		return nil, fmt.Errorf("warning response reports zero packs")
+	}
+
+	statuses := make([]PackStatus, 0, reportedPackCount)
+	for packIndex := 0; packIndex < reportedPackCount; packIndex++ {
+		address := requestedPack
+		if reportedPackCount > 1 || requestedPack == 255 {
+			address = uint8(packIndex + 1)
+		}
+
+		status := PackStatus{
+			Address:   address,
+			InfoFlag:  infoFlag,
+			UpdatedAt: time.Now().UTC(),
+		}
+
+		if offset >= len(fields) {
+			return nil, fmt.Errorf("warning payload missing cell count")
+		}
+		status.CellCount = int(fields[offset])
+		offset++
+		if offset+status.CellCount > len(fields) {
+			return nil, fmt.Errorf("warning payload ended in cell warnings")
+		}
+		status.CellWarnings = make([]string, 0, status.CellCount)
+		for i := 0; i < status.CellCount; i++ {
+			status.CellWarnings = append(status.CellWarnings, warningLevel(fields[offset]))
+			offset++
+		}
+
+		if offset >= len(fields) {
+			return nil, fmt.Errorf("warning payload missing temperature count")
+		}
+		status.TemperatureCount = int(fields[offset])
+		offset++
+		if offset+status.TemperatureCount > len(fields) {
+			return nil, fmt.Errorf("warning payload ended in temperature warnings")
+		}
+		status.TemperatureWarnings = make([]string, 0, status.TemperatureCount)
+		for i := 0; i < status.TemperatureCount; i++ {
+			status.TemperatureWarnings = append(status.TemperatureWarnings, warningLevel(fields[offset]))
+			offset++
+		}
+
+		if offset+12 > len(fields) {
+			return nil, fmt.Errorf("warning payload missing pack status bytes")
+		}
+		status.ChargeCurrentWarning = warningLevel(fields[offset])
+		offset++
+		status.TotalVoltageWarning = warningLevel(fields[offset])
+		offset++
+		status.DischargeCurrentWarning = warningLevel(fields[offset])
+		offset++
+
+		protectState1 := fields[offset]
+		offset++
+		protectState2 := fields[offset]
+		offset++
+		status.Protection = ProtectionStatus{
+			ShortCircuit:         protectState1&0b01000000 != 0,
+			HighDischargeCurrent: protectState1&0b00100000 != 0,
+			HighChargeCurrent:    protectState1&0b00010000 != 0,
+			LowTotalVoltage:      protectState1&0b00001000 != 0,
+			HighTotalVoltage:     protectState1&0b00000100 != 0,
+			LowCellVoltage:       protectState1&0b00000010 != 0,
+			HighCellVoltage:      protectState1&0b00000001 != 0,
+			FullyCharged:         protectState2&0b10000000 != 0,
+			LowEnvironmentTemp:   protectState2&0b01000000 != 0,
+			HighEnvironmentTemp:  protectState2&0b00100000 != 0,
+			HighMOSTemp:          protectState2&0b00010000 != 0,
+			LowDischargeTemp:     protectState2&0b00001000 != 0,
+			LowChargeTemp:        protectState2&0b00000100 != 0,
+			HighDischargeTemp:    protectState2&0b00000010 != 0,
+			HighChargeTemp:       protectState2&0b00000001 != 0,
+		}
+
+		instructionState := fields[offset]
+		offset++
+		status.Instruction = InstructionStatus{
+			ChargerAvailable:    instructionState&0b00100000 != 0,
+			ReverseConnected:    instructionState&0b00010000 != 0,
+			DischargeEnabled:    instructionState&0b00000100 != 0,
+			ChargeEnabled:       instructionState&0b00000010 != 0,
+			CurrentLimitEnabled: instructionState&0b00000001 != 0,
+		}
+
+		controlState := fields[offset]
+		offset++
+		status.Control = ControlStatus{
+			LEDWarnFunction:      controlState&0b00100000 != 0,
+			CurrentLimitFunction: controlState&0b00010000 != 0,
+			CurrentLimitGear:     controlState&0b00001000 != 0,
+			BuzzerWarnFunction:   controlState&0b00000001 != 0,
+		}
+
+		faultState := fields[offset]
+		offset++
+		status.Fault = FaultStatus{
+			Sampling:     faultState&0b00100000 != 0,
+			Cell:         faultState&0b00010000 != 0,
+			NTC:          faultState&0b00000100 != 0,
+			DischargeMOS: faultState&0b00000010 != 0,
+			ChargeMOS:    faultState&0b00000001 != 0,
+		}
+
+		status.BalanceState1 = fields[offset]
+		offset++
+		status.BalanceState2 = fields[offset]
+		offset++
+
+		warnState1 := fields[offset]
+		offset++
+		warnState2 := fields[offset]
+		offset++
+		status.Warning = WarningStatus{
+			HighDischargeCurrent: warnState1&0b00100000 != 0,
+			HighChargeCurrent:    warnState1&0b00010000 != 0,
+			LowTotalVoltage:      warnState1&0b00001000 != 0,
+			HighTotalVoltage:     warnState1&0b00000100 != 0,
+			LowCellVoltage:       warnState1&0b00000010 != 0,
+			HighCellVoltage:      warnState1&0b00000001 != 0,
+			LowSOC:               warnState2&0b10000000 != 0,
+			HighMOSTemp:          warnState2&0b01000000 != 0,
+			LowEnvironmentTemp:   warnState2&0b00100000 != 0,
+			HighEnvironmentTemp:  warnState2&0b00010000 != 0,
+			LowDischargeTemp:     warnState2&0b00001000 != 0,
+			LowChargeTemp:        warnState2&0b00000100 != 0,
+			HighDischargeTemp:    warnState2&0b00000010 != 0,
+			HighChargeTemp:       warnState2&0b00000001 != 0,
+		}
+
+		// PACE_LV_V2 responses observed by Gobel include one reserved byte here.
+		if packIndex+1 < reportedPackCount && offset < len(fields) && !plausibleCellCount(fields[offset]) {
+			offset++
+		} else if packIndex+1 == reportedPackCount && offset < len(fields) {
+			offset++
+		}
+		statuses = append(statuses, status)
+	}
+
+	return statuses, nil
+}
+
+func warningLevel(value byte) string {
+	switch {
+	case value == 0x00:
+		return "normal"
+	case value == 0x01:
+		return "below lower limit"
+	case value == 0x02:
+		return "above upper limit"
+	case value >= 0x80 && value <= 0xEF:
+		return "user defined"
+	case value == 0xF0:
+		return "other fault"
+	default:
+		return "unknown"
+	}
 }
 
 type envelope struct {

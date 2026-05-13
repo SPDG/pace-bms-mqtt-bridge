@@ -12,6 +12,7 @@
       <button id="rail-toggle" class="rail-toggle" type="button" title="Toggle navigation"><span class="toggle-mark"></span></button>
       <div class="rail-brand"><span>P</span><strong>PACE BMS</strong></div>
       <button class="rail-item active" type="button" data-tab="live"><span>B</span><strong>Live data</strong></button>
+      <button class="rail-item" type="button" data-tab="controls"><span>C</span><strong>Controls</strong></button>
       <button class="rail-item" type="button" data-tab="ha"><span>H</span><strong>HA config</strong></button>
       <button class="rail-item" type="button" data-tab="settings"><span>S</span><strong>Settings</strong></button>
     </aside>
@@ -55,6 +56,18 @@
                 <tbody id="telemetry"></tbody>
               </table>
             </div>
+          </section>
+        </section>
+
+        <section id="view-controls" class="tab-view">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Controls</h2>
+                <p>Read-only view of writable candidates and their BMS readback.</p>
+              </div>
+            </div>
+            <div id="controls" class="control-grid"></div>
           </section>
         </section>
 

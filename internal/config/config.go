@@ -79,6 +79,7 @@ type SerialConfig struct {
 
 type PollingConfig struct {
 	Interval       Duration `yaml:"interval" json:"interval"`
+	StatusInterval Duration `yaml:"status_interval" json:"statusInterval"`
 	ReconnectDelay Duration `yaml:"reconnect_delay" json:"reconnectDelay"`
 }
 
@@ -121,6 +122,7 @@ func Default() Config {
 		},
 		Polling: PollingConfig{
 			Interval:       Duration{Duration: 15 * time.Second},
+			StatusInterval: Duration{Duration: 30 * time.Second},
 			ReconnectDelay: Duration{Duration: 5 * time.Second},
 		},
 		MQTT: MQTTConfig{
@@ -219,6 +221,9 @@ func (c Config) Validate() error {
 	}
 	if c.Polling.Interval.Duration <= 0 {
 		return errors.New("polling.interval must be greater than 0")
+	}
+	if c.Polling.StatusInterval.Duration <= 0 {
+		return errors.New("polling.status_interval must be greater than 0")
 	}
 	if c.Polling.ReconnectDelay.Duration <= 0 {
 		return errors.New("polling.reconnect_delay must be greater than 0")

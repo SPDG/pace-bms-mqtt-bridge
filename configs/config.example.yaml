@@ -15,6 +15,7 @@ serial:
     timeout: 3s
 polling:
     interval: 15s
+    status_interval: 30s
     reconnect_delay: 5s
 mqtt:
     broker: tcp://127.0.0.1:1883
