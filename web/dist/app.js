@@ -12,7 +12,7 @@ async function loadStatus() {
   renderServices(data.service);
   renderPower(telemetryById, data.packs);
   renderPacks(data.packs);
-  renderControls(data.packs);
+  renderControls(data.packs, telemetryById);
   renderTelemetry(data.telemetry);
   renderHAConfig(data);
   renderSettings(data);
@@ -182,11 +182,14 @@ function renderPacks(packs) {
   });
 }
 
-function renderControls(packs) {
+function renderControls(packs, telemetryById = {}) {
   const controlsEl = document.getElementById('controls');
   if (!controlsEl) {
     return;
   }
+  const currentLimitSensors = Object.values(telemetryById)
+    .filter(item => item.id === 'current_limit_parameter' || item.id.endsWith('_current_limit_parameter'))
+    .sort((a, b) => a.id.localeCompare(b.id));
   const intro = `
     <article class="control-card overview">
       <div class="control-head">
@@ -196,6 +199,11 @@ function renderControls(packs) {
       <div class="control-actions">
         <span>Charge MOS setpoint</span>
         <span>Discharge MOS setpoint</span>
+      </div>
+      <div class="status-list">
+        ${currentLimitSensors.length
+          ? currentLimitSensors.map(item => numericStatusRow(item.name, item.rendered, item.unit, item.updatedAt)).join('')
+          : '<div class="status-row unknown"><span>Current limit parameter</span><strong>-</strong></div>'}
       </div>
     </article>
   `;
@@ -247,6 +255,16 @@ function statusRow(label, value, mode = 'neutral') {
     <div class="status-row ${cls}">
       <span>${escapeHTML(label)}</span>
       <strong>${known ? (active ? 'on' : 'off') : '-'}</strong>
+    </div>
+  `;
+}
+
+function numericStatusRow(label, value, unit, updatedAt) {
+  const title = updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString()}` : '';
+  return `
+    <div class="status-row neutral" title="${escapeHTML(title)}">
+      <span>${escapeHTML(label)}</span>
+      <strong>${escapeHTML(String(value))}${unit ? ` ${escapeHTML(unit)}` : ''}</strong>
     </div>
   `;
 }

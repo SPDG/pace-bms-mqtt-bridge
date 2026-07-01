@@ -24,6 +24,7 @@ const (
 	CommandPackNumber      Command = "pack_number"
 	CommandAnalog          Command = "analog"
 	CommandWarningInfo     Command = "warning_info"
+	CommandCurrentLimit    Command = "current_limit_parameter"
 	CommandProductInfo     Command = "product_info"
 	CommandSoftwareVersion Command = "software_version"
 )
@@ -292,6 +293,31 @@ func ParseProductInfo(response []byte) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(data.Info)), nil
+}
+
+func ParseCurrentLimitParameter(response []byte, requestedPack uint8) (CurrentLimitParameter, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return CurrentLimitParameter{}, err
+	}
+	if len(data.Info) != 2 {
+		return CurrentLimitParameter{}, fmt.Errorf("current limit parameter response has %d bytes, want 2", len(data.Info))
+	}
+	offset := 0
+	value, ok := readU16(data.Info, &offset)
+	if !ok {
+		return CurrentLimitParameter{}, fmt.Errorf("current limit parameter response ended early")
+	}
+	address := requestedPack
+	if data.Address != 0 {
+		address = data.Address
+	}
+	return CurrentLimitParameter{
+		Address:    address,
+		CurrentA:   float64(value),
+		UpdatedAt:  time.Now().UTC(),
+		SourceCID2: "ED",
+	}, nil
 }
 
 func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, error) {
@@ -598,6 +624,7 @@ var commandCodes = map[Command]string{
 	CommandPackNumber:      "90",
 	CommandAnalog:          "42",
 	CommandWarningInfo:     "44",
+	CommandCurrentLimit:    "ED",
 	CommandProductInfo:     "C2",
 	CommandSoftwareVersion: "C1",
 }
@@ -606,6 +633,7 @@ var commandLengths = map[Command]string{
 	CommandPackNumber:      "000",
 	CommandAnalog:          "002",
 	CommandWarningInfo:     "002",
+	CommandCurrentLimit:    "000",
 	CommandProductInfo:     "000",
 	CommandSoftwareVersion: "000",
 }

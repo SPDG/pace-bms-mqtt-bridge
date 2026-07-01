@@ -90,6 +90,14 @@ func (c *Client) WarningPacks(pack uint8) ([]PackStatus, error) {
 	return ParseWarningPacks(response, pack)
 }
 
+func (c *Client) CurrentLimitParameter(pack uint8) (CurrentLimitParameter, error) {
+	response, err := c.Query(CommandCurrentLimit, pack)
+	if err != nil {
+		return CurrentLimitParameter{}, err
+	}
+	return ParseCurrentLimitParameter(response, pack)
+}
+
 func openTransport(cfg config.Config) (io.ReadWriteCloser, error) {
 	if address, ok := tcpAddress(cfg.Serial.Port); ok {
 		timeout := cfg.Serial.Timeout.Duration

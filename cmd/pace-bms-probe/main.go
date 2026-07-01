@@ -15,6 +15,7 @@ func main() {
 	protocol := flag.String("protocol", "rs485", "PACE protocol flavor: rs485 or rs232")
 	first := flag.Int("first", 0, "First pack address to probe")
 	last := flag.Int("last", 16, "Last pack address to probe")
+	onlyCurrentLimit := flag.Bool("only-current-limit", false, "Only query current limit parameter")
 	flag.Parse()
 
 	cfg := config.Default()
@@ -32,6 +33,15 @@ func main() {
 			log.Fatalf("address out of range: %d", address)
 		}
 		pack := uint8(address)
+		if *onlyCurrentLimit {
+			limit, err := client.CurrentLimitParameter(pack)
+			if err != nil {
+				fmt.Printf("addr=%d current_limit_parameter error=%v\n", address, err)
+				continue
+			}
+			fmt.Printf("addr=%d current_limit_parameter=%.0fA source=%s\n", address, limit.CurrentA, limit.SourceCID2)
+			continue
+		}
 		if *protocol != string(pace.ProtocolRS232) {
 			got, err := client.PackNumber(pack)
 			if err != nil {
@@ -56,5 +66,11 @@ func main() {
 				len(analog.TemperaturesC),
 			)
 		}
+		limit, err := client.CurrentLimitParameter(pack)
+		if err != nil {
+			fmt.Printf("addr=%d current_limit_parameter error=%v\n", address, err)
+			continue
+		}
+		fmt.Printf("addr=%d current_limit_parameter=%.0fA source=%s\n", address, limit.CurrentA, limit.SourceCID2)
 	}
 }

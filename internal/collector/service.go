@@ -16,10 +16,11 @@ type ConfigProvider interface {
 }
 
 type Service struct {
-	provider       ConfigProvider
-	state          *state.Store
-	packs          []uint8
-	lastStatusPoll time.Time
+	provider                 ConfigProvider
+	state                    *state.Store
+	packs                    []uint8
+	lastStatusPoll           time.Time
+	currentLimitPollDisabled bool
 }
 
 func NewService(provider ConfigProvider, runtimeState *state.Store) *Service {
@@ -109,6 +110,7 @@ func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.
 		for _, status := range statuses {
 			s.state.UpsertPackStatus(status)
 		}
+		s.pollCurrentLimitParameter(client, pack)
 	}
 	if statusAttempted {
 		s.lastStatusPoll = time.Now()
@@ -118,6 +120,19 @@ func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.
 	}
 	s.state.SetServiceStatus("pace", "connected", true, "", time.Now().UTC())
 	return nil
+}
+
+func (s *Service) pollCurrentLimitParameter(client *pace.Client, pack uint8) {
+	if s.currentLimitPollDisabled {
+		return
+	}
+	limit, err := client.CurrentLimitParameter(pack)
+	if err != nil {
+		s.currentLimitPollDisabled = true
+		log.Printf("pace current limit parameter poll disabled after unsupported response: pack %d: %v", pack, err)
+		return
+	}
+	s.state.UpsertCurrentLimitParameter(limit)
 }
 
 func (s *Service) discoverPacks(ctx context.Context, client *pace.Client, cfg config.Config) []uint8 {

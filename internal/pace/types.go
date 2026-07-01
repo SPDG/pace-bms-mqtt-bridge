@@ -47,6 +47,13 @@ type PackStatus struct {
 	UpdatedAt               time.Time         `json:"updatedAt"`
 }
 
+type CurrentLimitParameter struct {
+	Address    uint8     `json:"address"`
+	CurrentA   float64   `json:"currentA"`
+	SourceCID2 string    `json:"sourceCid2"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
 type ProtectionStatus struct {
 	ShortCircuit         bool `json:"shortCircuit"`
 	HighDischargeCurrent bool `json:"highDischargeCurrent"`
@@ -200,6 +207,28 @@ func AggregateTelemetry(packs []Pack) []Telemetry {
 		aggregatePower("battery_power", "Battery Power", totalPowerW, "mdi:battery-charging", updatedAt),
 		aggregatePower("battery_discharge_power", "Battery Discharge Power", dischargePowerW, "mdi:battery-arrow-down", updatedAt),
 		aggregatePower("battery_charge_power", "Battery Charge Power", chargePowerW, "mdi:battery-arrow-up", updatedAt),
+	}
+}
+
+func TelemetryForCurrentLimitParameter(value CurrentLimitParameter) Telemetry {
+	id := "current_limit_parameter"
+	name := "Current Limit Parameter"
+	if value.Address != 0 && value.Address != 255 {
+		id = packID(value.Address, id)
+		name = fmt.Sprintf("Pack %02d Current Limit Parameter", value.Address)
+	}
+	return Telemetry{
+		ID:                        id,
+		Name:                      name,
+		PackAddress:               value.Address,
+		Unit:                      "A",
+		DeviceClass:               "current",
+		StateClass:                "measurement",
+		Icon:                      "mdi:current-dc",
+		SuggestedDisplayPrecision: displayPrecision(0),
+		Value:                     value.CurrentA,
+		Rendered:                  strconv.FormatFloat(value.CurrentA, 'f', 0, 64),
+		UpdatedAt:                 value.UpdatedAt,
 	}
 }
 

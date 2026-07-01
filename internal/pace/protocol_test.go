@@ -16,6 +16,17 @@ func TestBuildRequestRS485Analog(t *testing.T) {
 	}
 }
 
+func TestBuildRequestRS232CurrentLimitParameter(t *testing.T) {
+	got, err := BuildRequest(Request{Protocol: ProtocolRS232, Command: CommandCurrentLimit, Pack: 255})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "~250046ED10000FD55\r"
+	if string(got) != want {
+		t.Fatalf("request mismatch\nwant %q\n got %q", want, string(got))
+	}
+}
+
 func TestParsePackNumber(t *testing.T) {
 	body := "~25004600E00200"
 	got, err := ParsePackNumber([]byte(body + payloadChecksum([]byte(body)) + "\r"))
@@ -24,6 +35,20 @@ func TestParsePackNumber(t *testing.T) {
 	}
 	if got != 0 {
 		t.Fatalf("got %d", got)
+	}
+}
+
+func TestParseCurrentLimitParameter(t *testing.T) {
+	raw := frame([]byte{0x00, 0x64})
+	got, err := ParseCurrentLimitParameter([]byte(raw), 255)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CurrentA != 100 {
+		t.Fatalf("current limit = %.1f, want 100", got.CurrentA)
+	}
+	if got.Address != 1 {
+		t.Fatalf("address = %d, want 1", got.Address)
 	}
 }
 
@@ -145,6 +170,10 @@ func TestParseWarningPacks(t *testing.T) {
 }
 
 func analogFrame(info []byte) string {
+	return frame(info)
+}
+
+func frame(info []byte) string {
 	body := "~25014600" + lengthChecksum(hexLen(info)) + hexLen(info) + fmt.Sprintf("%X", info)
 	return body + payloadChecksum([]byte(body)) + "\r"
 }

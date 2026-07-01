@@ -76,6 +76,13 @@ func (s *Store) UpsertPackStatus(status pace.PackStatus) {
 	s.packs[status.Address] = pack
 }
 
+func (s *Store) UpsertCurrentLimitParameter(value pace.CurrentLimitParameter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	telemetry := pace.TelemetryForCurrentLimitParameter(value)
+	s.telemetry[telemetry.ID] = telemetry
+}
+
 func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
