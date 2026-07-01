@@ -1,7 +1,9 @@
 package state
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,19 +60,35 @@ func (s *Store) SetServiceStatus(name, status string, connected bool, lastError 
 func (s *Store) UpsertPack(pack pace.Pack) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing, ok := s.packs[pack.Address]; ok && pack.Status == nil {
-		pack.Status = existing.Status
+	s.upsertPackLocked(pack)
+}
+
+func (s *Store) ReplacePacks(packs []pace.Pack) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	visible := make(map[uint8]struct{}, len(packs))
+	for _, pack := range packs {
+		visible[pack.Address] = struct{}{}
 	}
-	s.packs[pack.Address] = pack
-	for _, value := range pace.TelemetryForPack(pack) {
-		s.telemetry[value.ID] = value
+	for address := range s.packs {
+		if _, ok := visible[address]; ok {
+			continue
+		}
+		delete(s.packs, address)
+		s.deletePackTelemetryLocked(address)
+	}
+	for _, pack := range packs {
+		s.upsertPackLocked(pack)
 	}
 }
 
 func (s *Store) UpsertPackStatus(status pace.PackStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pack := s.packs[status.Address]
+	pack, ok := s.packs[status.Address]
+	if !ok {
+		return
+	}
 	pack.Address = status.Address
 	pack.Status = &status
 	s.packs[status.Address] = pack
@@ -81,6 +99,25 @@ func (s *Store) UpsertCurrentLimitParameter(value pace.CurrentLimitParameter) {
 	defer s.mu.Unlock()
 	telemetry := pace.TelemetryForCurrentLimitParameter(value)
 	s.telemetry[telemetry.ID] = telemetry
+}
+
+func (s *Store) upsertPackLocked(pack pace.Pack) {
+	if existing, ok := s.packs[pack.Address]; ok && pack.Status == nil {
+		pack.Status = existing.Status
+	}
+	s.packs[pack.Address] = pack
+	for _, value := range pace.TelemetryForPack(pack) {
+		s.telemetry[value.ID] = value
+	}
+}
+
+func (s *Store) deletePackTelemetryLocked(address uint8) {
+	prefix := fmt.Sprintf("pack_%02d_", address)
+	for id := range s.telemetry {
+		if strings.HasPrefix(id, prefix) {
+			delete(s.telemetry, id)
+		}
+	}
 }
 
 func (s *Store) Snapshot() Snapshot {
