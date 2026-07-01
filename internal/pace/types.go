@@ -44,6 +44,7 @@ type PackStatus struct {
 	Warning                 WarningStatus     `json:"warning"`
 	BalanceState1           uint8             `json:"balanceState1"`
 	BalanceState2           uint8             `json:"balanceState2"`
+	RawFrame                string            `json:"-"`
 	UpdatedAt               time.Time         `json:"updatedAt"`
 }
 

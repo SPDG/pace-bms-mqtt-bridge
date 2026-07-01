@@ -349,6 +349,7 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 		status := PackStatus{
 			Address:   address,
 			InfoFlag:  infoFlag,
+			RawFrame:  string(response),
 			UpdatedAt: time.Now().UTC(),
 		}
 
