@@ -214,23 +214,7 @@ function renderControls(packs, telemetryById = {}) {
 function renderControlCard(pack) {
   const status = pack.status;
   const updated = status?.updatedAt ? new Date(status.updatedAt).toLocaleTimeString() : '-';
-  const rows = [
-    ['Charge MOS', status?.instruction?.chargeEnabled, 'enabled'],
-    ['Discharge MOS', status?.instruction?.dischargeEnabled, 'enabled'],
-    ['Current limit', status?.instruction?.currentLimitEnabled, 'neutral'],
-    ['Charger available', status?.instruction?.chargerAvailable, 'neutral'],
-    ['Reverse connected', status?.instruction?.reverseConnected, 'neutral'],
-    ['Fully charged', status?.protection?.fullyCharged, 'neutral'],
-    ['Buzzer warn function', status?.control?.buzzerWarnFunction, 'neutral'],
-    ['LED warn function', status?.control?.ledWarnFunction, 'neutral'],
-    ['Current limit function', status?.control?.currentLimitFunction, 'neutral'],
-    ['Current limit gear', status?.control?.currentLimitGear, 'neutral'],
-    ['Charge MOS fault', status?.fault?.chargeMos, 'alert'],
-    ['Discharge MOS fault', status?.fault?.dischargeMos, 'alert'],
-    ['High MOS temp warning', status?.warning?.highMosTemp, 'alert'],
-    ['Low environment temp warning', status?.warning?.lowEnvironmentTemp, 'alert'],
-    ['High environment temp warning', status?.warning?.highEnvironmentTemp, 'alert'],
-  ];
+  const sections = status ? controlSections(status) : [];
   return `
     <article class="control-card">
       <div class="control-head">
@@ -241,9 +225,103 @@ function renderControlCard(pack) {
         <span class="speed-chip">read-only</span>
       </div>
       <div class="status-list">
-        ${rows.map(([label, value, mode]) => statusRow(label, value, mode)).join('')}
+        ${sections.length ? sections.map(renderStatusSection).join('') : '<div class="status-row unknown"><span>Status frame</span><strong>-</strong></div>'}
       </div>
     </article>
+  `;
+}
+
+function controlSections(status) {
+  return [
+    {
+      title: 'Summary',
+      rows: [
+        textStatusRow('Cell warnings', warningSummary(status.cellWarnings)),
+        textStatusRow('Temperature warnings', warningSummary(status.temperatureWarnings)),
+        textStatusRow('Charge current', status.chargeCurrentWarning || '-'),
+        textStatusRow('Discharge current', status.dischargeCurrentWarning || '-'),
+        textStatusRow('Total voltage', status.totalVoltageWarning || '-'),
+        textStatusRow('Balance state 1', hexByte(status.balanceState1)),
+        textStatusRow('Balance state 2', hexByte(status.balanceState2)),
+      ],
+    },
+    {
+      title: 'Instruction',
+      rows: [
+        ['Charge MOS', status.instruction?.chargeEnabled, 'enabled'],
+        ['Discharge MOS', status.instruction?.dischargeEnabled, 'enabled'],
+        ['Current limit', status.instruction?.currentLimitEnabled, 'neutral'],
+        ['Charger available', status.instruction?.chargerAvailable, 'neutral'],
+        ['Reverse connected', status.instruction?.reverseConnected, 'alert'],
+      ],
+    },
+    {
+      title: 'Control',
+      rows: [
+        ['Buzzer warn function', status.control?.buzzerWarnFunction, 'neutral'],
+        ['LED warn function', status.control?.ledWarnFunction, 'neutral'],
+        ['Current limit function', status.control?.currentLimitFunction, 'neutral'],
+        ['Current limit gear', status.control?.currentLimitGear, 'neutral'],
+      ],
+    },
+    {
+      title: 'Protection',
+      rows: [
+        ['Short circuit', status.protection?.shortCircuit, 'alert'],
+        ['High discharge current', status.protection?.highDischargeCurrent, 'alert'],
+        ['High charge current', status.protection?.highChargeCurrent, 'alert'],
+        ['Low total voltage', status.protection?.lowTotalVoltage, 'alert'],
+        ['High total voltage', status.protection?.highTotalVoltage, 'alert'],
+        ['Low cell voltage', status.protection?.lowCellVoltage, 'alert'],
+        ['High cell voltage', status.protection?.highCellVoltage, 'alert'],
+        ['Fully charged', status.protection?.fullyCharged, 'neutral'],
+        ['Low environment temp', status.protection?.lowEnvironmentTemp, 'alert'],
+        ['High environment temp', status.protection?.highEnvironmentTemp, 'alert'],
+        ['High MOS temp', status.protection?.highMosTemp, 'alert'],
+        ['Low discharge temp', status.protection?.lowDischargeTemp, 'alert'],
+        ['Low charge temp', status.protection?.lowChargeTemp, 'alert'],
+        ['High discharge temp', status.protection?.highDischargeTemp, 'alert'],
+        ['High charge temp', status.protection?.highChargeTemp, 'alert'],
+      ],
+    },
+    {
+      title: 'Warning',
+      rows: [
+        ['High discharge current', status.warning?.highDischargeCurrent, 'alert'],
+        ['High charge current', status.warning?.highChargeCurrent, 'alert'],
+        ['Low total voltage', status.warning?.lowTotalVoltage, 'alert'],
+        ['High total voltage', status.warning?.highTotalVoltage, 'alert'],
+        ['Low cell voltage', status.warning?.lowCellVoltage, 'alert'],
+        ['High cell voltage', status.warning?.highCellVoltage, 'alert'],
+        ['Low SOC', status.warning?.lowSoc, 'alert'],
+        ['High MOS temp', status.warning?.highMosTemp, 'alert'],
+        ['Low environment temp', status.warning?.lowEnvironmentTemp, 'alert'],
+        ['High environment temp', status.warning?.highEnvironmentTemp, 'alert'],
+        ['Low discharge temp', status.warning?.lowDischargeTemp, 'alert'],
+        ['Low charge temp', status.warning?.lowChargeTemp, 'alert'],
+        ['High discharge temp', status.warning?.highDischargeTemp, 'alert'],
+        ['High charge temp', status.warning?.highChargeTemp, 'alert'],
+      ],
+    },
+    {
+      title: 'Fault',
+      rows: [
+        ['Sampling', status.fault?.sampling, 'alert'],
+        ['Cell', status.fault?.cell, 'alert'],
+        ['NTC', status.fault?.ntc, 'alert'],
+        ['Discharge MOS', status.fault?.dischargeMos, 'alert'],
+        ['Charge MOS', status.fault?.chargeMos, 'alert'],
+      ],
+    },
+  ];
+}
+
+function renderStatusSection(section) {
+  return `
+    <section class="status-section">
+      <h4>${escapeHTML(section.title)}</h4>
+      ${section.rows.map(row => Array.isArray(row) ? statusRow(row[0], row[1], row[2]) : row).join('')}
+    </section>
   `;
 }
 
@@ -259,6 +337,16 @@ function statusRow(label, value, mode = 'neutral') {
   `;
 }
 
+function textStatusRow(label, value, mode = 'neutral') {
+  const cls = String(value).toLowerCase() === 'normal' || String(value).toLowerCase() === 'none' ? 'good' : mode;
+  return `
+    <div class="status-row ${cls}">
+      <span>${escapeHTML(label)}</span>
+      <strong>${escapeHTML(String(value))}</strong>
+    </div>
+  `;
+}
+
 function numericStatusRow(label, value, unit, updatedAt) {
   const title = updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString()}` : '';
   return `
@@ -267,6 +355,25 @@ function numericStatusRow(label, value, unit, updatedAt) {
       <strong>${escapeHTML(String(value))}${unit ? ` ${escapeHTML(unit)}` : ''}</strong>
     </div>
   `;
+}
+
+function warningSummary(values) {
+  if (!Array.isArray(values) || !values.length) {
+    return '-';
+  }
+  const active = values
+    .map((value, index) => ({ value, index }))
+    .filter(item => item.value && item.value !== 'normal')
+    .map(item => `${pad2(item.index + 1)}:${item.value}`);
+  return active.length ? active.join(', ') : 'normal';
+}
+
+function hexByte(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return '-';
+  }
+  return `0x${parsed.toString(16).toUpperCase().padStart(2, '0')}`;
 }
 
 function statusClass(value, mode) {
