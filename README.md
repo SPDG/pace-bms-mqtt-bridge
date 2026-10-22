@@ -4,15 +4,18 @@ Linux-first single-binary bridge for polling PACE BMS battery packs over local s
 
 ## Status
 
-Early implementation. The bridge currently focuses on safe reads only:
+The bridge currently focuses on safe reads only:
 
-- PACE ASCII serial frames used by common PACE/Gobel packs,
+- PACE ASCII serial frames (`RS232` and `RS485`) over local serial ports or transparent TCP (`tcp://host:port`),
 - pack discovery over RS485-style addressing,
-- analog telemetry parsing for cells, temperatures, voltage, current, capacity, SOC, SOH and cycle count,
+- analog telemetry parsing (`0x42`) for cells, temperatures, voltage, current, capacity, SOC, SOH and cycle count,
+- warning, protection, fault, MOSFET, and per-cell balancing status parsing (`0x44`),
+- device metadata readback: firmware/hardware versions (`0xC1`, `0xC6`), BMS/Pack serial numbers (`0xC2`), RTC date/time (`0xB1`), and CAN/RS485 inverter protocol selection (`0xEB`/`0xEC`/`0x62`),
+- full readback of BMS protection, equalization (`0xB6`), full-charge (`0xAF`), hibernate (`0xA0`), current limit (`0xED`), OVP/UVP (`0xD1`–`0xD7`), OCP/SCP (`0xD9`, `0xDB`, `0xE3`, `0xE5`), and temperature thresholds (`0xDD`, `0xDF`, `0xE1`, `0xE7`),
 - MQTT state topics and Home Assistant MQTT Discovery,
-- embedded HTTP status page and JSON API.
+- responsive embedded HTTP status page (desktop & mobile) and JSON API.
 
-No BMS writes are implemented.
+No BMS writes are enabled in the runtime bridge yet. Full protocol documentation—including all writable, control (`0x99`, `0x9A`, `0x9B`, `0x9C`), equalization (`0xB5`), and calibration commands—is available in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
 ## Quick Start
 

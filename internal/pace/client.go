@@ -98,6 +98,175 @@ func (c *Client) CurrentLimitParameter(pack uint8) (CurrentLimitParameter, error
 	return ParseCurrentLimitParameter(response, pack)
 }
 
+func (c *Client) SoftwareVersion(pack uint8) (string, error) {
+	response, err := c.Query(CommandSoftwareVersion, pack)
+	if err != nil {
+		return "", err
+	}
+	return ParseSoftwareVersion(response)
+}
+
+func (c *Client) PaceSoftwareVersion(pack uint8) (string, string, error) {
+	response, err := c.Query(CommandPaceSoftwareVersion, pack)
+	if err != nil {
+		return "", "", err
+	}
+	return ParsePaceSoftwareVersion(response)
+}
+
+func (c *Client) ProductInfoDetails(pack uint8) (string, string, error) {
+	response, err := c.Query(CommandProductInfo, pack)
+	if err != nil {
+		return "", "", err
+	}
+	return ParseProductInfoDetails(response)
+}
+
+func (c *Client) BMSDateTime(pack uint8) (string, error) {
+	response, err := c.Query(CommandBMSDateTime, pack)
+	if err != nil {
+		return "", err
+	}
+	return ParseBMSDateTime(response)
+}
+
+func (c *Client) InverterProtocol(pack uint8) (InverterProtocolInfo, error) {
+	response, err := c.Query(CommandInverterProtocol, pack)
+	if err == nil {
+		if info, parseErr := ParseInverterProtocol(response, "EB"); parseErr == nil {
+			return info, nil
+		}
+	}
+	responseV2, errV2 := c.Query(CommandInverterProtocolV2, pack)
+	if errV2 != nil {
+		if err != nil {
+			return InverterProtocolInfo{}, err
+		}
+		return InverterProtocolInfo{}, errV2
+	}
+	return ParseInverterProtocol(responseV2, "62")
+}
+
+func (c *Client) EqualizationParameters(pack uint8) (EqualizationParameters, error) {
+	response, err := c.Query(CommandEqualizationParams, pack)
+	if err != nil {
+		return EqualizationParameters{}, err
+	}
+	return ParseEqualizationParameters(response)
+}
+
+func (c *Client) FullChargeParameters(pack uint8) (FullChargeParameters, error) {
+	response, err := c.Query(CommandFullChargeParams, pack)
+	if err != nil {
+		return FullChargeParameters{}, err
+	}
+	return ParseFullChargeParameters(response)
+}
+
+func (c *Client) SingleHibernateParameters(pack uint8) (SingleHibernateParameters, error) {
+	response, err := c.Query(CommandSingleHibernateParams, pack)
+	if err != nil {
+		return SingleHibernateParameters{}, err
+	}
+	return ParseSingleHibernateParameters(response)
+}
+
+func (c *Client) CellOVPParameters(pack uint8) (VoltageProtectionParameters, error) {
+	response, err := c.Query(CommandCellOVPParams, pack)
+	if err != nil {
+		return VoltageProtectionParameters{}, err
+	}
+	return ParseVoltageProtectionParameters(response)
+}
+
+func (c *Client) CellUVPParameters(pack uint8) (VoltageProtectionParameters, error) {
+	response, err := c.Query(CommandCellUVPParams, pack)
+	if err != nil {
+		return VoltageProtectionParameters{}, err
+	}
+	return ParseVoltageProtectionParameters(response)
+}
+
+func (c *Client) PackOVPParameters(pack uint8) (PackVoltageProtectionParameters, error) {
+	response, err := c.Query(CommandPackOVPParams, pack)
+	if err != nil {
+		return PackVoltageProtectionParameters{}, err
+	}
+	return ParsePackVoltageProtectionParameters(response)
+}
+
+func (c *Client) PackUVPParameters(pack uint8) (PackVoltageProtectionParameters, error) {
+	response, err := c.Query(CommandPackUVPParams, pack)
+	if err != nil {
+		return PackVoltageProtectionParameters{}, err
+	}
+	return ParsePackVoltageProtectionParameters(response)
+}
+
+func (c *Client) ChargeOCPParameters(pack uint8) (CurrentProtectionParameters, error) {
+	response, err := c.Query(CommandChargeOCPParams, pack)
+	if err != nil {
+		return CurrentProtectionParameters{}, err
+	}
+	return ParseCurrentProtectionParameters(response, false)
+}
+
+func (c *Client) DischargeOCP1Parameters(pack uint8) (CurrentProtectionParameters, error) {
+	response, err := c.Query(CommandDischargeOCP1Params, pack)
+	if err != nil {
+		return CurrentProtectionParameters{}, err
+	}
+	return ParseCurrentProtectionParameters(response, true)
+}
+
+func (c *Client) DischargeOCP2Parameters(pack uint8) (DischargeOCP2Parameters, error) {
+	response, err := c.Query(CommandDischargeOCP2Params, pack)
+	if err != nil {
+		return DischargeOCP2Parameters{}, err
+	}
+	return ParseDischargeOCP2Parameters(response)
+}
+
+func (c *Client) ShortCircuitDelay(pack uint8) (int, error) {
+	response, err := c.Query(CommandShortCircuitDelay, pack)
+	if err != nil {
+		return 0, err
+	}
+	return ParseShortCircuitDelay(response)
+}
+
+func (c *Client) HighTempParameters(pack uint8) (TemperatureProtectionParameters, TemperatureProtectionParameters, error) {
+	response, err := c.Query(CommandHighTempParams, pack)
+	if err != nil {
+		return TemperatureProtectionParameters{}, TemperatureProtectionParameters{}, err
+	}
+	return ParseDualTemperatureProtectionParameters(response)
+}
+
+func (c *Client) LowTempParameters(pack uint8) (TemperatureProtectionParameters, TemperatureProtectionParameters, error) {
+	response, err := c.Query(CommandLowTempParams, pack)
+	if err != nil {
+		return TemperatureProtectionParameters{}, TemperatureProtectionParameters{}, err
+	}
+	return ParseDualTemperatureProtectionParameters(response)
+}
+
+func (c *Client) MOSHighTempParameters(pack uint8) (TemperatureProtectionParameters, error) {
+	response, err := c.Query(CommandMOSHighTempParams, pack)
+	if err != nil {
+		return TemperatureProtectionParameters{}, err
+	}
+	return ParseSingleTemperatureProtectionParameters(response)
+}
+
+func (c *Client) EnvTempParameters(pack uint8) (TemperatureProtectionParameters, TemperatureProtectionParameters, error) {
+	response, err := c.Query(CommandEnvTempParams, pack)
+	if err != nil {
+		return TemperatureProtectionParameters{}, TemperatureProtectionParameters{}, err
+	}
+	return ParseDualTemperatureProtectionParameters(response)
+}
+
 func openTransport(cfg config.Config) (io.ReadWriteCloser, error) {
 	if address, ok := tcpAddress(cfg.Serial.Port); ok {
 		timeout := cfg.Serial.Timeout.Duration

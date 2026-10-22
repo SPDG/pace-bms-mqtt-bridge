@@ -92,6 +92,67 @@ func (s *Store) UpsertPackStatus(status pace.PackStatus) {
 	pack.Address = status.Address
 	pack.Status = &status
 	s.packs[status.Address] = pack
+	for _, value := range pace.TelemetryForPack(pack) {
+		s.telemetry[value.ID] = value
+	}
+}
+
+func (s *Store) UpsertPackInfo(info pace.PackInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pack, ok := s.packs[info.Address]
+	if !ok {
+		return
+	}
+	if pack.Info != nil {
+		merged := *pack.Info
+		if info.SoftwareVersion != "" {
+			merged.SoftwareVersion = info.SoftwareVersion
+		}
+		if info.PaceSoftwareVersion != "" {
+			merged.PaceSoftwareVersion = info.PaceSoftwareVersion
+		}
+		if info.HardwareVersion != "" {
+			merged.HardwareVersion = info.HardwareVersion
+		}
+		if info.BMSSerialNumber != "" {
+			merged.BMSSerialNumber = info.BMSSerialNumber
+		}
+		if info.PackSerialNumber != "" {
+			merged.PackSerialNumber = info.PackSerialNumber
+		}
+		if info.BMSDateTime != "" {
+			merged.BMSDateTime = info.BMSDateTime
+		}
+		if info.InverterProtocol != nil {
+			merged.InverterProtocol = info.InverterProtocol
+		}
+		merged.UpdatedAt = info.UpdatedAt
+		pack.Info = &merged
+	} else {
+		pack.Info = &info
+	}
+	s.packs[info.Address] = pack
+	for _, value := range pace.TelemetryForPack(pack) {
+		s.telemetry[value.ID] = value
+	}
+}
+
+func (s *Store) UpsertPackParameters(params pace.PackParameters) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pack, ok := s.packs[params.Address]
+	if !ok {
+		return
+	}
+	if pack.Parameters != nil && params.CurrentLimitA == nil {
+		params.CurrentLimitA = pack.Parameters.CurrentLimitA
+	}
+	pack.Parameters = &params
+	s.packs[params.Address] = pack
+	for _, value := range pace.TelemetryForPack(pack) {
+		s.telemetry[value.ID] = value
+	}
 }
 
 func (s *Store) UpsertCurrentLimitParameter(value pace.CurrentLimitParameter) {
@@ -99,11 +160,27 @@ func (s *Store) UpsertCurrentLimitParameter(value pace.CurrentLimitParameter) {
 	defer s.mu.Unlock()
 	telemetry := pace.TelemetryForCurrentLimitParameter(value)
 	s.telemetry[telemetry.ID] = telemetry
+	if pack, ok := s.packs[value.Address]; ok {
+		if pack.Parameters == nil {
+			pack.Parameters = &pace.PackParameters{Address: value.Address, UpdatedAt: value.UpdatedAt}
+		}
+		limit := value.CurrentA
+		pack.Parameters.CurrentLimitA = &limit
+		s.packs[value.Address] = pack
+	}
 }
 
 func (s *Store) upsertPackLocked(pack pace.Pack) {
-	if existing, ok := s.packs[pack.Address]; ok && pack.Status == nil {
-		pack.Status = existing.Status
+	if existing, ok := s.packs[pack.Address]; ok {
+		if pack.Status == nil {
+			pack.Status = existing.Status
+		}
+		if pack.Info == nil {
+			pack.Info = existing.Info
+		}
+		if pack.Parameters == nil {
+			pack.Parameters = existing.Parameters
+		}
 	}
 	s.packs[pack.Address] = pack
 	for _, value := range pace.TelemetryForPack(pack) {

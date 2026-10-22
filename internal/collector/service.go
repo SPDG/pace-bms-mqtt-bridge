@@ -16,12 +16,17 @@ type ConfigProvider interface {
 	GetConfig() config.Config
 }
 
+const metadataPollInterval = 10 * time.Minute
+
 type Service struct {
 	provider                 ConfigProvider
 	state                    *state.Store
 	packs                    []uint8
 	lastStatusPoll           time.Time
+	lastMetadataPoll         map[uint8]time.Time
 	currentLimitPollDisabled bool
+	bmsDateTimePollDisabled  bool
+	unsupportedCommands      map[string]bool
 	lastStatusSignature      map[uint8]string
 }
 
@@ -29,6 +34,8 @@ func NewService(provider ConfigProvider, runtimeState *state.Store) *Service {
 	return &Service{
 		provider:            provider,
 		state:               runtimeState,
+		lastMetadataPoll:    make(map[uint8]time.Time),
+		unsupportedCommands: make(map[string]bool),
 		lastStatusSignature: make(map[uint8]string),
 	}
 }
@@ -118,6 +125,13 @@ func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.
 			s.state.UpsertPackStatus(status)
 		}
 		s.pollCurrentLimitParameter(client, pack)
+		for _, analog := range packs {
+			s.pollBMSDateTime(client, analog.Address)
+			if s.isMetadataDue(analog.Address) {
+				s.pollMetadataAndParameters(ctx, client, analog.Address)
+				s.lastMetadataPoll[analog.Address] = time.Now()
+			}
+		}
 	}
 	if statusAttempted {
 		s.lastStatusPoll = time.Now()
@@ -129,17 +143,298 @@ func (s *Service) pollOnce(ctx context.Context, client *pace.Client, cfg config.
 	return nil
 }
 
+func (s *Service) isMetadataDue(address uint8) bool {
+	last, ok := s.lastMetadataPoll[address]
+	return !ok || last.IsZero() || time.Since(last) >= metadataPollInterval
+}
+
 func (s *Service) pollCurrentLimitParameter(client *pace.Client, pack uint8) {
 	if s.currentLimitPollDisabled {
 		return
 	}
 	limit, err := client.CurrentLimitParameter(pack)
 	if err != nil {
-		s.currentLimitPollDisabled = true
-		log.Printf("pace current limit parameter poll disabled after unsupported response: pack %d: %v", pack, err)
+		if isUnsupportedCommandError(err) {
+			s.currentLimitPollDisabled = true
+			log.Printf("pace current limit parameter poll disabled after unsupported response: pack %d: %v", pack, err)
+		} else {
+			log.Printf("pace current limit parameter poll failed: pack %d: %v", pack, err)
+		}
 		return
 	}
 	s.state.UpsertCurrentLimitParameter(limit)
+}
+
+func (s *Service) pollBMSDateTime(client *pace.Client, address uint8) {
+	if s.bmsDateTimePollDisabled {
+		return
+	}
+	dt, err := client.BMSDateTime(address)
+	if err != nil {
+		if isUnsupportedCommandError(err) {
+			s.bmsDateTimePollDisabled = true
+			log.Printf("pace bms datetime poll disabled after unsupported response: pack %d: %v", address, err)
+		} else {
+			log.Printf("pace bms datetime poll failed: pack %d: %v", address, err)
+		}
+		return
+	}
+	s.state.UpsertPackInfo(pace.PackInfo{
+		Address:     address,
+		BMSDateTime: dt,
+		UpdatedAt:   time.Now().UTC(),
+	})
+}
+
+func isUnsupportedCommandError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "BMS returned code")
+}
+
+func (s *Service) pollMetadataAndParameters(ctx context.Context, client *pace.Client, address uint8) {
+	now := time.Now().UTC()
+	info := pace.PackInfo{
+		Address:   address,
+		UpdatedAt: now,
+	}
+	hasInfo := false
+
+	stepPause := func() bool {
+		return sleep(ctx, 40*time.Millisecond)
+	}
+	cmdKey := func(name string) string {
+		return fmt.Sprintf("%d:%s", address, name)
+	}
+	tryCmd := func(name string, fn func() error) {
+		key := cmdKey(name)
+		if s.unsupportedCommands[key] {
+			return
+		}
+		if !stepPause() {
+			return
+		}
+		if err := fn(); err != nil {
+			if isUnsupportedCommandError(err) {
+				s.unsupportedCommands[key] = true
+				log.Printf("pace optional read %s unsupported on pack %d: %v", name, address, err)
+			} else {
+				log.Printf("pace optional read %s failed on pack %d: %v", name, address, err)
+			}
+		}
+	}
+
+	tryCmd("software_version", func() error {
+		ver, err := client.SoftwareVersion(address)
+		if err != nil {
+			return err
+		}
+		info.SoftwareVersion = ver
+		hasInfo = true
+		return nil
+	})
+
+	tryCmd("pace_software_version", func() error {
+		paceVer, hwVer, err := client.PaceSoftwareVersion(address)
+		if err != nil {
+			return err
+		}
+		info.PaceSoftwareVersion = paceVer
+		info.HardwareVersion = hwVer
+		hasInfo = true
+		return nil
+	})
+
+	tryCmd("product_info", func() error {
+		bmsSN, packSN, err := client.ProductInfoDetails(address)
+		if err != nil {
+			return err
+		}
+		info.BMSSerialNumber = bmsSN
+		info.PackSerialNumber = packSN
+		hasInfo = true
+		return nil
+	})
+
+	tryCmd("inverter_protocol", func() error {
+		proto, err := client.InverterProtocol(address)
+		if err != nil {
+			return err
+		}
+		info.InverterProtocol = &proto
+		hasInfo = true
+		return nil
+	})
+
+	if hasInfo {
+		info.UpdatedAt = time.Now().UTC()
+		s.state.UpsertPackInfo(info)
+	}
+
+	params := pace.PackParameters{
+		Address:   address,
+		UpdatedAt: time.Now().UTC(),
+	}
+	hasParams := false
+
+	tryCmd("equalization_params", func() error {
+		eq, err := client.EqualizationParameters(address)
+		if err != nil {
+			return err
+		}
+		params.Equalization = &eq
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("full_charge_params", func() error {
+		fc, err := client.FullChargeParameters(address)
+		if err != nil {
+			return err
+		}
+		params.FullCharge = &fc
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("single_hibernate_params", func() error {
+		sh, err := client.SingleHibernateParameters(address)
+		if err != nil {
+			return err
+		}
+		params.SingleHibernate = &sh
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("cell_ovp_params", func() error {
+		v, err := client.CellOVPParameters(address)
+		if err != nil {
+			return err
+		}
+		params.CellOVP = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("cell_uvp_params", func() error {
+		v, err := client.CellUVPParameters(address)
+		if err != nil {
+			return err
+		}
+		params.CellUVP = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("pack_ovp_params", func() error {
+		v, err := client.PackOVPParameters(address)
+		if err != nil {
+			return err
+		}
+		params.PackOVP = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("pack_uvp_params", func() error {
+		v, err := client.PackUVPParameters(address)
+		if err != nil {
+			return err
+		}
+		params.PackUVP = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("charge_ocp_params", func() error {
+		v, err := client.ChargeOCPParameters(address)
+		if err != nil {
+			return err
+		}
+		params.ChargeOCP = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("discharge_ocp1_params", func() error {
+		v, err := client.DischargeOCP1Parameters(address)
+		if err != nil {
+			return err
+		}
+		params.DischargeOCP1 = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("discharge_ocp2_params", func() error {
+		v, err := client.DischargeOCP2Parameters(address)
+		if err != nil {
+			return err
+		}
+		params.DischargeOCP2 = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("short_circuit_delay", func() error {
+		v, err := client.ShortCircuitDelay(address)
+		if err != nil {
+			return err
+		}
+		params.ShortCircuitDelayUS = &v
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("high_temp_params", func() error {
+		chg, dsg, err := client.HighTempParameters(address)
+		if err != nil {
+			return err
+		}
+		params.ChargeHighTemp = &chg
+		params.DischargeHighTemp = &dsg
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("low_temp_params", func() error {
+		chg, dsg, err := client.LowTempParameters(address)
+		if err != nil {
+			return err
+		}
+		params.ChargeLowTemp = &chg
+		params.DischargeLowTemp = &dsg
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("mos_high_temp_params", func() error {
+		mos, err := client.MOSHighTempParameters(address)
+		if err != nil {
+			return err
+		}
+		params.MOSHighTemp = &mos
+		hasParams = true
+		return nil
+	})
+
+	tryCmd("env_temp_params", func() error {
+		low, high, err := client.EnvTempParameters(address)
+		if err != nil {
+			return err
+		}
+		params.EnvLowTemp = &low
+		params.EnvHighTemp = &high
+		hasParams = true
+		return nil
+	})
+
+	if hasParams {
+		params.UpdatedAt = time.Now().UTC()
+		s.state.UpsertPackParameters(params)
+	}
 }
 
 func (s *Service) logStatusChange(status pace.PackStatus) {
@@ -153,7 +448,7 @@ func (s *Service) logStatusChange(status pace.PackStatus) {
 		active = "none"
 	}
 	log.Printf(
-		"pace bms status changed pack=%02d charge_current=%s discharge_current=%s total_voltage=%s charger_available=%t charge_enabled=%t discharge_enabled=%t current_limit=%t current_limit_function=%t current_limit_gear=%t active=%s raw_warning_frame=%q",
+		"pace bms status changed pack=%02d charge_current=%s discharge_current=%s total_voltage=%s charger_available=%t charge_enabled=%t discharge_enabled=%t current_limit=%t current_limit_function=%t current_limit_gear=%t balancing_cells=%d active=%s raw_warning_frame=%q",
 		status.Address,
 		status.ChargeCurrentWarning,
 		status.DischargeCurrentWarning,
@@ -164,6 +459,7 @@ func (s *Service) logStatusChange(status pace.PackStatus) {
 		status.Instruction.CurrentLimitEnabled,
 		status.Control.CurrentLimitFunction,
 		status.Control.CurrentLimitGear,
+		status.BalancingCellCount,
 		active,
 		status.RawFrame,
 	)
@@ -171,10 +467,12 @@ func (s *Service) logStatusChange(status pace.PackStatus) {
 
 func statusSignature(status pace.PackStatus) string {
 	return fmt.Sprintf(
-		"cc=%s;dc=%s;tv=%s;instruction=%+v;control=%+v;protection=%+v;warning=%+v;fault=%+v;cell=%v;temp=%v",
+		"cc=%s;dc=%s;tv=%s;b1=%d;b2=%d;instruction=%+v;control=%+v;protection=%+v;warning=%+v;fault=%+v;cell=%v;temp=%v",
 		status.ChargeCurrentWarning,
 		status.DischargeCurrentWarning,
 		status.TotalVoltageWarning,
+		status.BalanceState1,
+		status.BalanceState2,
 		status.Instruction,
 		status.Control,
 		status.Protection,
@@ -187,17 +485,26 @@ func statusSignature(status pace.PackStatus) string {
 
 func activeStatusFields(status pace.PackStatus) []string {
 	var fields []string
+	if status.Instruction.HeaterOn {
+		fields = append(fields, "instruction.heater_on")
+	}
 	if status.Instruction.CurrentLimitEnabled {
 		fields = append(fields, "instruction.current_limit")
 	}
 	if status.Instruction.ReverseConnected {
 		fields = append(fields, "instruction.reverse_connected")
 	}
+	if status.Control.SystemLock {
+		fields = append(fields, "control.system_lock")
+	}
 	if status.Control.CurrentLimitFunction {
 		fields = append(fields, "control.current_limit_function")
 	}
 	if status.Control.CurrentLimitGear {
 		fields = append(fields, "control.current_limit_gear")
+	}
+	if status.Protection.ChargerHighVoltage {
+		fields = append(fields, "protection.charger_high_voltage")
 	}
 	if status.Protection.ShortCircuit {
 		fields = append(fields, "protection.short_circuit")
@@ -285,6 +592,12 @@ func activeStatusFields(status pace.PackStatus) []string {
 	}
 	if status.Warning.HighChargeTemp {
 		fields = append(fields, "warning.high_charge_temp")
+	}
+	if status.Fault.Heater {
+		fields = append(fields, "fault.heater")
+	}
+	if status.Fault.CurrentLimit {
+		fields = append(fields, "fault.current_limit")
 	}
 	if status.Fault.Sampling {
 		fields = append(fields, "fault.sampling")

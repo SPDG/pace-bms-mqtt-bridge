@@ -4,27 +4,30 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type Pack struct {
-	Address             uint8       `json:"address"`
-	InfoFlag            uint8       `json:"infoFlag"`
-	ReportedPackCount   uint8       `json:"reportedPackCount"`
-	CellsMV             []int       `json:"cellsMv"`
-	TemperaturesC       []float64   `json:"temperaturesC"`
-	Status              *PackStatus `json:"status,omitempty"`
-	CurrentA            float64     `json:"currentA"`
-	VoltageV            float64     `json:"voltageV"`
-	PowerKW             float64     `json:"powerKw"`
-	RemainingCapacityAh float64     `json:"remainingCapacityAh"`
-	FullCapacityAh      float64     `json:"fullCapacityAh"`
-	DesignCapacityAh    float64     `json:"designCapacityAh"`
-	SOC                 float64     `json:"soc"`
-	SOH                 float64     `json:"soh"`
-	CycleCount          int         `json:"cycleCount"`
-	DefinedNumberP      uint8       `json:"definedNumberP"`
-	UpdatedAt           time.Time   `json:"updatedAt"`
+	Address             uint8           `json:"address"`
+	InfoFlag            uint8           `json:"infoFlag"`
+	ReportedPackCount   uint8           `json:"reportedPackCount"`
+	CellsMV             []int           `json:"cellsMv"`
+	TemperaturesC       []float64       `json:"temperaturesC"`
+	Status              *PackStatus     `json:"status,omitempty"`
+	Info                *PackInfo       `json:"info,omitempty"`
+	Parameters          *PackParameters `json:"parameters,omitempty"`
+	CurrentA            float64         `json:"currentA"`
+	VoltageV            float64         `json:"voltageV"`
+	PowerKW             float64         `json:"powerKw"`
+	RemainingCapacityAh float64         `json:"remainingCapacityAh"`
+	FullCapacityAh      float64         `json:"fullCapacityAh"`
+	DesignCapacityAh    float64         `json:"designCapacityAh"`
+	SOC                 float64         `json:"soc"`
+	SOH                 float64         `json:"soh"`
+	CycleCount          int             `json:"cycleCount"`
+	DefinedNumberP      uint8           `json:"definedNumberP"`
+	UpdatedAt           time.Time       `json:"updatedAt"`
 }
 
 type PackStatus struct {
@@ -33,6 +36,8 @@ type PackStatus struct {
 	CellCount               int               `json:"cellCount"`
 	TemperatureCount        int               `json:"temperatureCount"`
 	CellWarnings            []string          `json:"cellWarnings,omitempty"`
+	CellsBalancing          []bool            `json:"cellsBalancing,omitempty"`
+	BalancingCellCount      int               `json:"balancingCellCount"`
 	TemperatureWarnings     []string          `json:"temperatureWarnings,omitempty"`
 	ChargeCurrentWarning    string            `json:"chargeCurrentWarning,omitempty"`
 	TotalVoltageWarning     string            `json:"totalVoltageWarning,omitempty"`
@@ -48,6 +53,103 @@ type PackStatus struct {
 	UpdatedAt               time.Time         `json:"updatedAt"`
 }
 
+type PackInfo struct {
+	Address             uint8                 `json:"address"`
+	SoftwareVersion     string                `json:"softwareVersion,omitempty"`
+	PaceSoftwareVersion string                `json:"paceSoftwareVersion,omitempty"`
+	HardwareVersion     string                `json:"hardwareVersion,omitempty"`
+	BMSSerialNumber     string                `json:"bmsSerialNumber,omitempty"`
+	PackSerialNumber    string                `json:"packSerialNumber,omitempty"`
+	BMSDateTime         string                `json:"bmsDateTime,omitempty"`
+	InverterProtocol    *InverterProtocolInfo `json:"inverterProtocol,omitempty"`
+	UpdatedAt           time.Time             `json:"updatedAt"`
+}
+
+type InverterProtocolInfo struct {
+	CANCode    uint8  `json:"canCode"`
+	CANName    string `json:"canName"`
+	RS485Code  uint8  `json:"rs485Code"`
+	RS485Name  string `json:"rs485Name"`
+	Mode       uint8  `json:"mode"`
+	ModeName   string `json:"modeName,omitempty"`
+	SourceCID2 string `json:"sourceCid2,omitempty"`
+}
+
+type PackParameters struct {
+	Address             uint8                            `json:"address"`
+	CurrentLimitA       *float64                         `json:"currentLimitA,omitempty"`
+	Equalization        *EqualizationParameters          `json:"equalization,omitempty"`
+	FullCharge          *FullChargeParameters            `json:"fullCharge,omitempty"`
+	SingleHibernate     *SingleHibernateParameters       `json:"singleHibernate,omitempty"`
+	CellOVP             *VoltageProtectionParameters     `json:"cellOvp,omitempty"`
+	CellUVP             *VoltageProtectionParameters     `json:"cellUvp,omitempty"`
+	PackOVP             *PackVoltageProtectionParameters `json:"packOvp,omitempty"`
+	PackUVP             *PackVoltageProtectionParameters `json:"packUvp,omitempty"`
+	ChargeOCP           *CurrentProtectionParameters     `json:"chargeOcp,omitempty"`
+	DischargeOCP1       *CurrentProtectionParameters     `json:"dischargeOcp1,omitempty"`
+	DischargeOCP2       *DischargeOCP2Parameters         `json:"dischargeOcp2,omitempty"`
+	ShortCircuitDelayUS *int                             `json:"shortCircuitDelayUs,omitempty"`
+	ChargeHighTemp      *TemperatureProtectionParameters `json:"chargeHighTemp,omitempty"`
+	DischargeHighTemp   *TemperatureProtectionParameters `json:"dischargeHighTemp,omitempty"`
+	ChargeLowTemp       *TemperatureProtectionParameters `json:"chargeLowTemp,omitempty"`
+	DischargeLowTemp    *TemperatureProtectionParameters `json:"dischargeLowTemp,omitempty"`
+	MOSHighTemp         *TemperatureProtectionParameters `json:"mosHighTemp,omitempty"`
+	EnvLowTemp          *TemperatureProtectionParameters `json:"envLowTemp,omitempty"`
+	EnvHighTemp         *TemperatureProtectionParameters `json:"envHighTemp,omitempty"`
+	UpdatedAt           time.Time                        `json:"updatedAt"`
+}
+
+type EqualizationParameters struct {
+	StartVoltageMV int `json:"startVoltageMv"`
+	DeltaVoltageMV int `json:"deltaVoltageMv"`
+}
+
+type FullChargeParameters struct {
+	FullVoltageV       float64 `json:"fullVoltageV"`
+	CutOffCurrentA     float64 `json:"cutOffCurrentA"`
+	LowSOCAlarmPercent int     `json:"lowSocAlarmPercent"`
+}
+
+type SingleHibernateParameters struct {
+	SleepVoltageMV int `json:"sleepVoltageMv"`
+	DelayMinutes   int `json:"delayMinutes"`
+}
+
+type VoltageProtectionParameters struct {
+	Enabled    bool `json:"enabled"`
+	WarningMV  int  `json:"warningMv"`
+	ProtectMV  int  `json:"protectMv"`
+	RecoveryMV int  `json:"recoveryMv"`
+	DelayMS    int  `json:"delayMs"`
+}
+
+type PackVoltageProtectionParameters struct {
+	Enabled   bool    `json:"enabled"`
+	WarningV  float64 `json:"warningV"`
+	ProtectV  float64 `json:"protectV"`
+	RecoveryV float64 `json:"recoveryV"`
+	DelayMS   int     `json:"delayMs"`
+}
+
+type CurrentProtectionParameters struct {
+	Enabled  bool    `json:"enabled"`
+	WarningA float64 `json:"warningA"`
+	ProtectA float64 `json:"protectA"`
+	DelayMS  int     `json:"delayMs"`
+}
+
+type DischargeOCP2Parameters struct {
+	ProtectA float64 `json:"protectA"`
+	DelayMS  int     `json:"delayMs"`
+}
+
+type TemperatureProtectionParameters struct {
+	Enabled   bool    `json:"enabled"`
+	WarningC  float64 `json:"warningC"`
+	ProtectC  float64 `json:"protectC"`
+	RecoveryC float64 `json:"recoveryC"`
+}
+
 type CurrentLimitParameter struct {
 	Address    uint8     `json:"address"`
 	CurrentA   float64   `json:"currentA"`
@@ -56,6 +158,7 @@ type CurrentLimitParameter struct {
 }
 
 type ProtectionStatus struct {
+	ChargerHighVoltage   bool `json:"chargerHighVoltage"`
 	ShortCircuit         bool `json:"shortCircuit"`
 	HighDischargeCurrent bool `json:"highDischargeCurrent"`
 	HighChargeCurrent    bool `json:"highChargeCurrent"`
@@ -74,6 +177,7 @@ type ProtectionStatus struct {
 }
 
 type InstructionStatus struct {
+	HeaterOn            bool `json:"heaterOn"`
 	ChargerAvailable    bool `json:"chargerAvailable"`
 	ReverseConnected    bool `json:"reverseConnected"`
 	DischargeEnabled    bool `json:"dischargeEnabled"`
@@ -82,6 +186,7 @@ type InstructionStatus struct {
 }
 
 type ControlStatus struct {
+	SystemLock           bool `json:"systemLock"`
 	LEDWarnFunction      bool `json:"ledWarnFunction"`
 	CurrentLimitFunction bool `json:"currentLimitFunction"`
 	CurrentLimitGear     bool `json:"currentLimitGear"`
@@ -89,6 +194,8 @@ type ControlStatus struct {
 }
 
 type FaultStatus struct {
+	Heater       bool `json:"heater"`
+	CurrentLimit bool `json:"currentLimit"`
 	Sampling     bool `json:"sampling"`
 	Cell         bool `json:"cell"`
 	NTC          bool `json:"ntc"`
@@ -181,6 +288,108 @@ func TelemetryForPack(p Pack) []Telemetry {
 			Rendered:                  strconv.FormatFloat(temp, 'f', 2, 64),
 			UpdatedAt:                 p.UpdatedAt,
 		})
+	}
+
+	if p.Status != nil {
+		st := p.Status
+		statusTime := st.UpdatedAt
+		if statusTime.IsZero() {
+			statusTime = p.UpdatedAt
+		}
+		values = append(values,
+			intvAt(p, "balancing_cell_count", "Balancing Cell Count", st.BalancingCellCount, "", "", "measurement", "mdi:scale-balance", statusTime),
+			boolvAt(p, "balancing_active", "Balancing Active", st.BalancingCellCount > 0, "mdi:scale-balance", statusTime),
+			strvAt(p, "balancing_cells", "Balancing Cells", balancingCellsSummary(st.CellsBalancing), "mdi:scale-balance", statusTime),
+			boolvAt(p, "charge_mos", "Charge MOS", st.Instruction.ChargeEnabled, "mdi:electric-switch", statusTime),
+			boolvAt(p, "discharge_mos", "Discharge MOS", st.Instruction.DischargeEnabled, "mdi:electric-switch", statusTime),
+			boolvAt(p, "charger_available", "Charger Available", st.Instruction.ChargerAvailable, "mdi:power-plug", statusTime),
+			boolvAt(p, "heater_active", "Heater Active", st.Instruction.HeaterOn, "mdi:radiator", statusTime),
+		)
+	}
+
+	if p.Info != nil {
+		info := p.Info
+		infoTime := info.UpdatedAt
+		if infoTime.IsZero() {
+			infoTime = p.UpdatedAt
+		}
+		if info.SoftwareVersion != "" {
+			values = append(values, strvAt(p, "software_version", "Firmware Version", info.SoftwareVersion, "mdi:chip", infoTime))
+		}
+		if info.PaceSoftwareVersion != "" {
+			values = append(values, strvAt(p, "pace_software_version", "PACE Firmware Version", info.PaceSoftwareVersion, "mdi:chip", infoTime))
+		}
+		if info.HardwareVersion != "" {
+			values = append(values, strvAt(p, "hardware_version", "Hardware Version", info.HardwareVersion, "mdi:expansion-card", infoTime))
+		}
+		if info.BMSSerialNumber != "" {
+			values = append(values, strvAt(p, "bms_serial_number", "BMS Serial Number", info.BMSSerialNumber, "mdi:identifier", infoTime))
+		}
+		if info.PackSerialNumber != "" {
+			values = append(values, strvAt(p, "pack_serial_number", "Pack Serial Number", info.PackSerialNumber, "mdi:identifier", infoTime))
+		}
+		if info.BMSDateTime != "" {
+			values = append(values, strvAt(p, "bms_datetime", "BMS Clock", info.BMSDateTime, "mdi:clock-outline", infoTime))
+		}
+		if info.InverterProtocol != nil {
+			if info.InverterProtocol.CANName != "" {
+				values = append(values, strvAt(p, "can_protocol", "CAN Protocol", info.InverterProtocol.CANName, "mdi:serial-port", infoTime))
+			}
+			if info.InverterProtocol.RS485Name != "" {
+				values = append(values, strvAt(p, "rs485_protocol", "RS485 Protocol", info.InverterProtocol.RS485Name, "mdi:serial-port", infoTime))
+			}
+		}
+	}
+
+	if p.Parameters != nil {
+		params := p.Parameters
+		paramTime := params.UpdatedAt
+		if paramTime.IsZero() {
+			paramTime = p.UpdatedAt
+		}
+		if params.Equalization != nil {
+			values = append(values,
+				intvAt(p, "equalization_start_voltage", "Balancing Start Voltage", params.Equalization.StartVoltageMV, "mV", "voltage", "measurement", "mdi:scale-balance", paramTime),
+				intvAt(p, "equalization_diff_voltage", "Balancing Trigger Diff", params.Equalization.DeltaVoltageMV, "mV", "voltage", "measurement", "mdi:scale-balance", paramTime),
+			)
+		}
+		if params.FullCharge != nil {
+			values = append(values,
+				numAt(p, "full_charge_voltage", "Full Charge Voltage", params.FullCharge.FullVoltageV, 2, "V", "voltage", "measurement", "mdi:battery-charging-100", paramTime),
+				numAt(p, "full_charge_current", "Full Charge Cut-off Current", params.FullCharge.CutOffCurrentA, 2, "A", "current", "measurement", "mdi:current-dc", paramTime),
+				intvAt(p, "low_soc_alarm", "Low SOC Alarm Threshold", params.FullCharge.LowSOCAlarmPercent, "%", "", "measurement", "mdi:battery-alert", paramTime),
+			)
+		}
+		if params.SingleHibernate != nil {
+			values = append(values,
+				intvAt(p, "hibernate_voltage", "Cell Sleep Voltage", params.SingleHibernate.SleepVoltageMV, "mV", "voltage", "measurement", "mdi:power-sleep", paramTime),
+				intvAt(p, "hibernate_delay", "Cell Sleep Delay", params.SingleHibernate.DelayMinutes, "min", "duration", "measurement", "mdi:timer-outline", paramTime),
+			)
+		}
+		if params.CellOVP != nil {
+			values = append(values, intvAt(p, "cell_ovp_protect", "Cell OVP Protect", params.CellOVP.ProtectMV, "mV", "voltage", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.CellUVP != nil {
+			values = append(values, intvAt(p, "cell_uvp_protect", "Cell UVP Protect", params.CellUVP.ProtectMV, "mV", "voltage", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.PackOVP != nil {
+			values = append(values, numAt(p, "pack_ovp_protect", "Pack OVP Protect", params.PackOVP.ProtectV, 2, "V", "voltage", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.PackUVP != nil {
+			values = append(values, numAt(p, "pack_uvp_protect", "Pack UVP Protect", params.PackUVP.ProtectV, 2, "V", "voltage", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.ChargeOCP != nil {
+			values = append(values, numAt(p, "charge_ocp_protect", "Charge OCP Protect", params.ChargeOCP.ProtectA, 0, "A", "current", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.DischargeOCP1 != nil {
+			values = append(values, numAt(p, "discharge_ocp1_protect", "Discharge OCP1 Protect", params.DischargeOCP1.ProtectA, 0, "A", "current", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.DischargeOCP2 != nil {
+			values = append(values, numAt(p, "discharge_ocp2_protect", "Discharge OCP2 Protect", params.DischargeOCP2.ProtectA, 0, "A", "current", "measurement", "mdi:shield-alert", paramTime))
+		}
+		if params.ShortCircuitDelayUS != nil {
+			values = append(values, intvAt(p, "short_circuit_delay", "Short Circuit Delay", *params.ShortCircuitDelayUS, "\u00b5s", "", "measurement", "mdi:timer-alert", paramTime))
+		}
 	}
 	return values
 }
@@ -283,6 +492,10 @@ func cellSummary(p Pack, id, name string, valueMV int, icon string) Telemetry {
 }
 
 func num(p Pack, id, name string, value float64, precisionValue int, unit, deviceClass, stateClass, icon string) Telemetry {
+	return numAt(p, id, name, value, precisionValue, unit, deviceClass, stateClass, icon, p.UpdatedAt)
+}
+
+func numAt(p Pack, id, name string, value float64, precisionValue int, unit, deviceClass, stateClass, icon string, updatedAt time.Time) Telemetry {
 	return Telemetry{
 		ID:                        packID(p.Address, id),
 		Name:                      fmt.Sprintf("Pack %02d %s", p.Address, name),
@@ -294,11 +507,15 @@ func num(p Pack, id, name string, value float64, precisionValue int, unit, devic
 		SuggestedDisplayPrecision: displayPrecision(precisionValue),
 		Value:                     value,
 		Rendered:                  strconv.FormatFloat(value, 'f', precisionValue, 64),
-		UpdatedAt:                 p.UpdatedAt,
+		UpdatedAt:                 updatedAt,
 	}
 }
 
 func intv(p Pack, id, name string, value int, unit, deviceClass, stateClass, icon string) Telemetry {
+	return intvAt(p, id, name, value, unit, deviceClass, stateClass, icon, p.UpdatedAt)
+}
+
+func intvAt(p Pack, id, name string, value int, unit, deviceClass, stateClass, icon string, updatedAt time.Time) Telemetry {
 	return Telemetry{
 		ID:          packID(p.Address, id),
 		Name:        fmt.Sprintf("Pack %02d %s", p.Address, name),
@@ -309,8 +526,49 @@ func intv(p Pack, id, name string, value int, unit, deviceClass, stateClass, ico
 		Icon:        icon,
 		Value:       value,
 		Rendered:    strconv.Itoa(value),
-		UpdatedAt:   p.UpdatedAt,
+		UpdatedAt:   updatedAt,
 	}
+}
+
+func boolvAt(p Pack, id, name string, value bool, icon string, updatedAt time.Time) Telemetry {
+	rendered := "off"
+	if value {
+		rendered = "on"
+	}
+	return Telemetry{
+		ID:          packID(p.Address, id),
+		Name:        fmt.Sprintf("Pack %02d %s", p.Address, name),
+		PackAddress: p.Address,
+		Icon:        icon,
+		Value:       value,
+		Rendered:    rendered,
+		UpdatedAt:   updatedAt,
+	}
+}
+
+func strvAt(p Pack, id, name, value, icon string, updatedAt time.Time) Telemetry {
+	return Telemetry{
+		ID:          packID(p.Address, id),
+		Name:        fmt.Sprintf("Pack %02d %s", p.Address, name),
+		PackAddress: p.Address,
+		Icon:        icon,
+		Value:       value,
+		Rendered:    value,
+		UpdatedAt:   updatedAt,
+	}
+}
+
+func balancingCellsSummary(balancing []bool) string {
+	var active []string
+	for i, b := range balancing {
+		if b {
+			active = append(active, fmt.Sprintf("%02d", i+1))
+		}
+	}
+	if len(active) == 0 {
+		return "none"
+	}
+	return strings.Join(active, ", ")
 }
 
 func packID(address uint8, id string) string {

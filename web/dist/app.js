@@ -20,7 +20,8 @@ async function loadStatus() {
 
 function initNavigation() {
   const rail = document.getElementById('rail');
-  const expanded = localStorage.getItem('railExpanded') === 'true';
+  const isMobile = window.matchMedia('(max-width: 900px)').matches;
+  const expanded = !isMobile && localStorage.getItem('railExpanded') === 'true';
   document.body.classList.toggle('rail-expanded', expanded);
   rail.classList.toggle('expanded', expanded);
 
@@ -28,11 +29,19 @@ function initNavigation() {
     const next = !document.body.classList.contains('rail-expanded');
     document.body.classList.toggle('rail-expanded', next);
     rail.classList.toggle('expanded', next);
-    localStorage.setItem('railExpanded', String(next));
+    if (!window.matchMedia('(max-width: 900px)').matches) {
+      localStorage.setItem('railExpanded', String(next));
+    }
   });
 
   document.querySelectorAll('[data-tab]').forEach(button => {
-    button.addEventListener('click', () => activateTab(button.dataset.tab));
+    button.addEventListener('click', () => {
+      activateTab(button.dataset.tab);
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        document.body.classList.remove('rail-expanded');
+        rail.classList.remove('expanded');
+      }
+    });
   });
 
   document.querySelectorAll('[data-copy-target]').forEach(button => {
@@ -142,18 +151,43 @@ function renderPacks(packs) {
 
   packs.forEach(pack => {
     const cells = pack.cellsMv || [];
+    const balancing = pack.status?.cellsBalancing || [];
+    const balancingCount = pack.status?.balancingCellCount ?? 0;
     const min = cells.length ? Math.min(...cells) : null;
     const max = cells.length ? Math.max(...cells) : null;
     const diff = min !== null && max !== null ? max - min : null;
-    const cellBlocks = cells.map(mv => {
+    const cellBlocks = cells.map((mv, idx) => {
       const pct = min !== null && max !== null && max > min ? (mv - min) / (max - min) : 0.5;
       const level = pct > 0.66 ? 'high' : pct < 0.33 ? 'low' : 'mid';
-      return `<span class="cell ${level}" title="${mv} mV">${mv}</span>`;
+      const isBal = Boolean(balancing[idx]);
+      const balClass = isBal ? ' balancing' : '';
+      const title = `Cell ${pad2(idx + 1)}: ${mv} mV${isBal ? ' · BALANCING' : ''}`;
+      return `<span class="cell ${level}${balClass}" title="${escapeHTML(title)}">${mv}</span>`;
     }).join('');
     const tempBlocks = (pack.temperaturesC || []).map((temp, index) => {
       const label = temperatureLabel(index);
       return `<span class="temp-chip ${temperatureLevel(temp)}" title="Probe ${pad2(index + 1)} · ${label}">${escapeHTML(label)} <strong>${fmt.format(temp)}°C</strong></span>`;
     }).join('');
+
+    const infoChips = [];
+    if (pack.info?.softwareVersion) {
+      infoChips.push(`FW ${pack.info.softwareVersion}`);
+    }
+    if (pack.info?.hardwareVersion) {
+      infoChips.push(`HW ${pack.info.hardwareVersion}`);
+    }
+    if (pack.info?.bmsSerialNumber) {
+      infoChips.push(`SN ${pack.info.bmsSerialNumber}`);
+    }
+    if (pack.info?.inverterProtocol?.canName) {
+      infoChips.push(`CAN ${pack.info.inverterProtocol.canName}`);
+    }
+    if (pack.info?.inverterProtocol?.rs485Name) {
+      infoChips.push(`485 ${pack.info.inverterProtocol.rs485Name}`);
+    }
+    if (pack.info?.bmsDateTime) {
+      infoChips.push(`RTC ${pack.info.bmsDateTime}`);
+    }
 
     const div = document.createElement('article');
     div.className = 'pack-card';
@@ -161,7 +195,7 @@ function renderPacks(packs) {
       <div class="pack-head">
         <div>
           <h3>Pack ${String(pack.address).padStart(2, '0')}</h3>
-          <p>${cells.length} cells · ${pack.temperaturesC?.length ?? 0} temps</p>
+          <p>${cells.length} cells · ${pack.temperaturesC?.length ?? 0} temps${infoChips.length ? ` · ${escapeHTML(infoChips.join(' · '))}` : ''}</p>
         </div>
         <span class="soc">${fmt.format(pack.soc)}%</span>
       </div>
@@ -176,6 +210,7 @@ function renderPacks(packs) {
         <span>Min ${min ?? '-'} mV</span>
         <span>Max ${max ?? '-'} mV</span>
         <span>Diff ${diff ?? '-'} mV</span>
+        <span>Balancing ${balancingCount}/${cells.length}</span>
       </div>
     `;
     packsEl.appendChild(div);
@@ -214,7 +249,11 @@ function renderControls(packs, telemetryById = {}) {
 function renderControlCard(pack) {
   const status = pack.status;
   const updated = status?.updatedAt ? new Date(status.updatedAt).toLocaleTimeString() : '-';
-  const sections = status ? controlSections(status) : [];
+  const sections = [
+    ...infoSections(pack.info),
+    ...(status ? controlSections(status) : []),
+    ...parameterSections(pack.parameters),
+  ];
   return `
     <article class="control-card">
       <div class="control-head">
@@ -231,6 +270,163 @@ function renderControlCard(pack) {
   `;
 }
 
+function infoSections(info) {
+  if (!info) {
+    return [];
+  }
+  const rows = [];
+  if (info.softwareVersion) {
+    rows.push(textStatusRow('Firmware version (0xC1)', info.softwareVersion));
+  }
+  if (info.paceSoftwareVersion) {
+    rows.push(textStatusRow('PACE FW version (0xC6)', info.paceSoftwareVersion));
+  }
+  if (info.hardwareVersion) {
+    rows.push(textStatusRow('Hardware version (0xC6)', info.hardwareVersion));
+  }
+  if (info.bmsSerialNumber) {
+    rows.push(textStatusRow('BMS serial (0xC2)', info.bmsSerialNumber));
+  }
+  if (info.packSerialNumber) {
+    rows.push(textStatusRow('Pack serial (0xC2)', info.packSerialNumber));
+  }
+  if (info.bmsDateTime) {
+    rows.push(textStatusRow('BMS RTC clock (0xB1)', info.bmsDateTime));
+  }
+  if (info.inverterProtocol) {
+    const p = info.inverterProtocol;
+    rows.push(textStatusRow('CAN protocol (0xEB)', `${p.canName} (0x${pad2(p.canCode.toString(16).toUpperCase())})`));
+    rows.push(textStatusRow('RS485 protocol (0xEB)', `${p.rs485Name} (0x${pad2(p.rs485Code.toString(16).toUpperCase())})`));
+    if (p.modeName) {
+      rows.push(textStatusRow('Protocol mode', p.modeName));
+    }
+  }
+  if (!rows.length) {
+    return [];
+  }
+  return [{ title: 'Device & Protocols', rows }];
+}
+
+function parameterSections(params) {
+  if (!params) {
+    return [];
+  }
+  const sections = [];
+
+  const generalRows = [];
+  if (params.currentLimitA !== undefined && params.currentLimitA !== null) {
+    generalRows.push(textStatusRow('Current limit (0xED)', `${fmt.format(params.currentLimitA)} A`));
+  }
+  if (params.equalization) {
+    generalRows.push(textStatusRow('Balancing start (0xB6)', `${params.equalization.startVoltageMv} mV`));
+    generalRows.push(textStatusRow('Balancing diff (0xB6)', `${params.equalization.deltaVoltageMv} mV`));
+  }
+  if (params.fullCharge) {
+    generalRows.push(textStatusRow('Full charge voltage (0xAF)', `${fmt.format(params.fullCharge.fullVoltageV)} V`));
+    generalRows.push(textStatusRow('Full charge cut-off (0xAF)', `${fmt.format(params.fullCharge.cutOffCurrentA)} A`));
+    generalRows.push(textStatusRow('Low SOC alarm (0xAF)', `${params.fullCharge.lowSocAlarmPercent} %`));
+  }
+  if (params.singleHibernate) {
+    generalRows.push(textStatusRow('Cell sleep voltage (0xA0)', `${params.singleHibernate.sleepVoltageMv} mV`));
+    generalRows.push(textStatusRow('Cell sleep delay (0xA0)', `${params.singleHibernate.delayMinutes} min`));
+  }
+  if (generalRows.length) {
+    sections.push({ title: 'Balancing, Full Charge & Sleep', rows: generalRows });
+  }
+
+  const voltRows = [];
+  if (params.cellOvp) {
+    voltRows.push(textStatusRow('Cell OVP (0xD1)', formatVoltProtMv(params.cellOvp)));
+  }
+  if (params.cellUvp) {
+    voltRows.push(textStatusRow('Cell UVP (0xD3)', formatVoltProtMv(params.cellUvp)));
+  }
+  if (params.packOvp) {
+    voltRows.push(textStatusRow('Pack OVP (0xD5)', formatVoltProtV(params.packOvp)));
+  }
+  if (params.packUvp) {
+    voltRows.push(textStatusRow('Pack UVP (0xD7)', formatVoltProtV(params.packUvp)));
+  }
+  if (voltRows.length) {
+    sections.push({ title: 'Voltage Protection Thresholds', rows: voltRows });
+  }
+
+  const currRows = [];
+  if (params.chargeOcp) {
+    currRows.push(textStatusRow('Charge OCP (0xD9)', formatCurrProt(params.chargeOcp)));
+  }
+  if (params.dischargeOcp1) {
+    currRows.push(textStatusRow('Discharge OCP1 (0xDB)', formatCurrProt(params.dischargeOcp1)));
+  }
+  if (params.dischargeOcp2) {
+    currRows.push(textStatusRow('Discharge OCP2 (0xE3)', `${fmt.format(params.dischargeOcp2.protectA)} A · ${params.dischargeOcp2.delayMs} ms`));
+  }
+  if (params.shortCircuitDelayUs !== undefined && params.shortCircuitDelayUs !== null) {
+    currRows.push(textStatusRow('Short circuit delay (0xE5)', `${params.shortCircuitDelayUs} µs`));
+  }
+  if (currRows.length) {
+    sections.push({ title: 'Current & SCP Thresholds', rows: currRows });
+  }
+
+  const tempRows = [];
+  if (params.chargeHighTemp) {
+    tempRows.push(textStatusRow('Charge OTP (0xDD)', formatTempProt(params.chargeHighTemp)));
+  }
+  if (params.dischargeHighTemp) {
+    tempRows.push(textStatusRow('Discharge OTP (0xDD)', formatTempProt(params.dischargeHighTemp)));
+  }
+  if (params.chargeLowTemp) {
+    tempRows.push(textStatusRow('Charge UTP (0xDF)', formatTempProt(params.chargeLowTemp)));
+  }
+  if (params.dischargeLowTemp) {
+    tempRows.push(textStatusRow('Discharge UTP (0xDF)', formatTempProt(params.dischargeLowTemp)));
+  }
+  if (params.mosHighTemp) {
+    tempRows.push(textStatusRow('MOS OTP (0xE1)', formatTempProt(params.mosHighTemp)));
+  }
+  if (params.envHighTemp) {
+    tempRows.push(textStatusRow('Ambient OTP (0xE7)', formatTempProt(params.envHighTemp)));
+  }
+  if (params.envLowTemp) {
+    tempRows.push(textStatusRow('Ambient UTP (0xE7)', formatTempProt(params.envLowTemp)));
+  }
+  if (tempRows.length) {
+    sections.push({ title: 'Temperature Thresholds (W / P / R)', rows: tempRows });
+  }
+
+  return sections;
+}
+
+function formatVoltProtMv(p) {
+  if (!p.enabled) return 'disabled';
+  return `${p.warningMv} / ${p.protectMv} / ${p.recoveryMv} mV · ${p.delayMs} ms`;
+}
+
+function formatVoltProtV(p) {
+  if (!p.enabled) return 'disabled';
+  return `${fmt.format(p.warningV)} / ${fmt.format(p.protectV)} / ${fmt.format(p.recoveryV)} V · ${p.delayMs} ms`;
+}
+
+function formatCurrProt(p) {
+  if (!p.enabled) return 'disabled';
+  return `W ${fmt.format(p.warningA)} A / P ${fmt.format(p.protectA)} A · ${p.delayMs} ms`;
+}
+
+function formatTempProt(p) {
+  if (!p.enabled) return 'disabled';
+  return `${fmt.format(p.warningC)} / ${fmt.format(p.protectC)} / ${fmt.format(p.recoveryC)} °C`;
+}
+
+function balancingSummary(cells) {
+  if (!Array.isArray(cells) || !cells.length) {
+    return 'none';
+  }
+  const active = cells
+    .map((val, idx) => (val ? pad2(idx + 1) : null))
+    .filter(Boolean);
+  return active.length ? active.join(', ') : 'none';
+}
+
 function controlSections(status) {
   return [
     {
@@ -241,6 +437,7 @@ function controlSections(status) {
         textStatusRow('Charge current', status.chargeCurrentWarning || '-'),
         textStatusRow('Discharge current', status.dischargeCurrentWarning || '-'),
         textStatusRow('Total voltage', status.totalVoltageWarning || '-'),
+        textStatusRow('Balancing cells', balancingSummary(status.cellsBalancing)),
         textStatusRow('Balance state 1', hexByte(status.balanceState1)),
         textStatusRow('Balance state 2', hexByte(status.balanceState2)),
       ],
@@ -252,6 +449,7 @@ function controlSections(status) {
         ['Discharge MOS', status.instruction?.dischargeEnabled, 'enabled'],
         ['Current limit', status.instruction?.currentLimitEnabled, 'neutral'],
         ['Charger available', status.instruction?.chargerAvailable, 'neutral'],
+        ['Heater active', status.instruction?.heaterOn, 'neutral'],
         ['Reverse connected', status.instruction?.reverseConnected, 'alert'],
       ],
     },
@@ -262,11 +460,13 @@ function controlSections(status) {
         ['LED warn function', status.control?.ledWarnFunction, 'neutral'],
         ['Current limit function', status.control?.currentLimitFunction, 'neutral'],
         ['Current limit gear', status.control?.currentLimitGear, 'neutral'],
+        ['System lock', status.control?.systemLock, 'alert'],
       ],
     },
     {
       title: 'Protection',
       rows: [
+        ['Charger high voltage', status.protection?.chargerHighVoltage, 'alert'],
         ['Short circuit', status.protection?.shortCircuit, 'alert'],
         ['High discharge current', status.protection?.highDischargeCurrent, 'alert'],
         ['High charge current', status.protection?.highChargeCurrent, 'alert'],
@@ -306,6 +506,8 @@ function controlSections(status) {
     {
       title: 'Fault',
       rows: [
+        ['Heater', status.fault?.heater, 'alert'],
+        ['Current limit (CCB)', status.fault?.currentLimit, 'alert'],
         ['Sampling', status.fault?.sampling, 'alert'],
         ['Cell', status.fault?.cell, 'alert'],
         ['NTC', status.fault?.ntc, 'alert'],

@@ -2,6 +2,7 @@
 /pace-bms-mqtt-bridge
 /bin/
 /dist/
+/tmp/
 
 # Go
 *.test

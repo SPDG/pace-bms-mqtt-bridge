@@ -21,12 +21,31 @@ const (
 type Command string
 
 const (
-	CommandPackNumber      Command = "pack_number"
-	CommandAnalog          Command = "analog"
-	CommandWarningInfo     Command = "warning_info"
-	CommandCurrentLimit    Command = "current_limit_parameter"
-	CommandProductInfo     Command = "product_info"
-	CommandSoftwareVersion Command = "software_version"
+	CommandPackNumber            Command = "pack_number"
+	CommandAnalog                Command = "analog"
+	CommandWarningInfo           Command = "warning_info"
+	CommandCurrentLimit          Command = "current_limit_parameter"
+	CommandProductInfo           Command = "product_info"
+	CommandSoftwareVersion       Command = "software_version"
+	CommandPaceSoftwareVersion   Command = "pace_software_version"
+	CommandBMSDateTime           Command = "bms_datetime"
+	CommandInverterProtocol      Command = "inverter_protocol"
+	CommandInverterProtocolV2    Command = "inverter_protocol_v2"
+	CommandEqualizationParams    Command = "equalization_params"
+	CommandFullChargeParams      Command = "full_charge_params"
+	CommandSingleHibernateParams Command = "single_hibernate_params"
+	CommandCellOVPParams         Command = "cell_ovp_params"
+	CommandCellUVPParams         Command = "cell_uvp_params"
+	CommandPackOVPParams         Command = "pack_ovp_params"
+	CommandPackUVPParams         Command = "pack_uvp_params"
+	CommandChargeOCPParams       Command = "charge_ocp_params"
+	CommandDischargeOCP1Params   Command = "discharge_ocp1_params"
+	CommandDischargeOCP2Params   Command = "discharge_ocp2_params"
+	CommandShortCircuitDelay     Command = "short_circuit_delay"
+	CommandHighTempParams        Command = "high_temp_params"
+	CommandLowTempParams         Command = "low_temp_params"
+	CommandMOSHighTempParams     Command = "mos_high_temp_params"
+	CommandEnvTempParams         Command = "env_temp_params"
 )
 
 type Request struct {
@@ -292,7 +311,280 @@ func ParseProductInfo(response []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(data.Info)), nil
+	return cleanASCII(data.Info), nil
+}
+
+func ParseProductInfoDetails(response []byte) (string, string, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return "", "", err
+	}
+	if len(data.Info) <= 20 {
+		return cleanASCII(data.Info), "", nil
+	}
+	return cleanASCII(data.Info[:20]), cleanASCII(data.Info[20:]), nil
+}
+
+func ParseSoftwareVersion(response []byte) (string, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return "", err
+	}
+	if len(data.Info) > 20 {
+		return cleanASCII(data.Info[:20]), nil
+	}
+	return cleanASCII(data.Info), nil
+}
+
+func ParsePaceSoftwareVersion(response []byte) (string, string, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return "", "", err
+	}
+	if len(data.Info) <= 10 {
+		return cleanASCII(data.Info), "", nil
+	}
+	split := len(data.Info) - 10
+	return cleanASCII(data.Info[:split]), cleanASCII(data.Info[split:]), nil
+}
+
+func ParseBMSDateTime(response []byte) (string, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return "", err
+	}
+	if len(data.Info) < 6 {
+		return "", fmt.Errorf("bms datetime response has %d bytes, want at least 6", len(data.Info))
+	}
+	year := 2000 + int(data.Info[0])
+	month := int(data.Info[1])
+	day := int(data.Info[2])
+	hour := int(data.Info[3])
+	minute := int(data.Info[4])
+	second := int(data.Info[5])
+	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second), nil
+}
+
+func ParseInverterProtocol(response []byte, sourceCID2 string) (InverterProtocolInfo, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return InverterProtocolInfo{}, err
+	}
+	if len(data.Info) < 2 {
+		return InverterProtocolInfo{}, fmt.Errorf("inverter protocol response has %d bytes, want at least 2", len(data.Info))
+	}
+	canCode := data.Info[0]
+	rs485Code := data.Info[1]
+	mode := uint8(0xFE)
+	if len(data.Info) >= 3 {
+		mode = data.Info[2]
+	}
+	return InverterProtocolInfo{
+		CANCode:    canCode,
+		CANName:    canProtocolName(canCode),
+		RS485Code:  rs485Code,
+		RS485Name:  rs485ProtocolName(rs485Code),
+		Mode:       mode,
+		ModeName:   inverterProtocolModeName(mode),
+		SourceCID2: sourceCID2,
+	}, nil
+}
+
+func ParseEqualizationParameters(response []byte) (EqualizationParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return EqualizationParameters{}, err
+	}
+	if len(data.Info) < 4 {
+		return EqualizationParameters{}, fmt.Errorf("equalization parameters response has %d bytes, want 4", len(data.Info))
+	}
+	offset := 0
+	startMV, _ := readU16(data.Info, &offset)
+	diffMV, _ := readU16(data.Info, &offset)
+	return EqualizationParameters{
+		StartVoltageMV: int(startMV),
+		DeltaVoltageMV: int(diffMV),
+	}, nil
+}
+
+func ParseFullChargeParameters(response []byte) (FullChargeParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return FullChargeParameters{}, err
+	}
+	if len(data.Info) < 5 {
+		return FullChargeParameters{}, fmt.Errorf("full charge parameters response has %d bytes, want 5", len(data.Info))
+	}
+	offset := 0
+	fullMV, _ := readU16(data.Info, &offset)
+	cutOffMA, _ := readU16(data.Info, &offset)
+	lowSOC := data.Info[offset]
+	return FullChargeParameters{
+		FullVoltageV:       round(float64(fullMV)/1000, 2),
+		CutOffCurrentA:     round(float64(cutOffMA)/1000, 2),
+		LowSOCAlarmPercent: int(lowSOC),
+	}, nil
+}
+
+func ParseSingleHibernateParameters(response []byte) (SingleHibernateParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return SingleHibernateParameters{}, err
+	}
+	if len(data.Info) < 4 {
+		return SingleHibernateParameters{}, fmt.Errorf("single hibernate parameters response has %d bytes, want 4", len(data.Info))
+	}
+	offset := 0
+	sleepMV, _ := readU16(data.Info, &offset)
+	delayMin, _ := readU16(data.Info, &offset)
+	return SingleHibernateParameters{
+		SleepVoltageMV: int(sleepMV),
+		DelayMinutes:   int(delayMin),
+	}, nil
+}
+
+func ParseVoltageProtectionParameters(response []byte) (VoltageProtectionParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return VoltageProtectionParameters{}, err
+	}
+	if len(data.Info) < 8 {
+		return VoltageProtectionParameters{}, fmt.Errorf("voltage protection parameters response has %d bytes, want 8", len(data.Info))
+	}
+	enabled := data.Info[0] > 0
+	offset := 1
+	warnMV, _ := readU16(data.Info, &offset)
+	protectMV, _ := readU16(data.Info, &offset)
+	recoveryMV, _ := readU16(data.Info, &offset)
+	delayMS := int(data.Info[offset]) * 100
+	return VoltageProtectionParameters{
+		Enabled:    enabled,
+		WarningMV:  int(warnMV),
+		ProtectMV:  int(protectMV),
+		RecoveryMV: int(recoveryMV),
+		DelayMS:    delayMS,
+	}, nil
+}
+
+func ParsePackVoltageProtectionParameters(response []byte) (PackVoltageProtectionParameters, error) {
+	raw, err := ParseVoltageProtectionParameters(response)
+	if err != nil {
+		return PackVoltageProtectionParameters{}, err
+	}
+	return PackVoltageProtectionParameters{
+		Enabled:   raw.Enabled,
+		WarningV:  round(float64(raw.WarningMV)/1000, 2),
+		ProtectV:  round(float64(raw.ProtectMV)/1000, 2),
+		RecoveryV: round(float64(raw.RecoveryMV)/1000, 2),
+		DelayMS:   raw.DelayMS,
+	}, nil
+}
+
+func ParseCurrentProtectionParameters(response []byte, signed bool) (CurrentProtectionParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return CurrentProtectionParameters{}, err
+	}
+	if len(data.Info) < 6 {
+		return CurrentProtectionParameters{}, fmt.Errorf("current protection parameters response has %d bytes, want 6", len(data.Info))
+	}
+	enabled := data.Info[0] > 0
+	offset := 1
+	warnRaw, _ := readU16(data.Info, &offset)
+	protectRaw, _ := readU16(data.Info, &offset)
+	delayMS := int(data.Info[offset]) * 100
+	warnA := float64(warnRaw)
+	protectA := float64(protectRaw)
+	if signed {
+		warnA = absFloat(float64(int16(warnRaw)))
+		protectA = absFloat(float64(int16(protectRaw)))
+	}
+	return CurrentProtectionParameters{
+		Enabled:  enabled,
+		WarningA: warnA,
+		ProtectA: protectA,
+		DelayMS:  delayMS,
+	}, nil
+}
+
+func ParseDischargeOCP2Parameters(response []byte) (DischargeOCP2Parameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return DischargeOCP2Parameters{}, err
+	}
+	if len(data.Info) < 3 {
+		return DischargeOCP2Parameters{}, fmt.Errorf("discharge OCP2 parameters response has %d bytes, want at least 3", len(data.Info))
+	}
+	offset := 0
+	protectRaw, _ := readU16(data.Info, &offset)
+	delayMS := int(data.Info[offset]) * 25
+	return DischargeOCP2Parameters{
+		ProtectA: absFloat(float64(int16(protectRaw))),
+		DelayMS:  delayMS,
+	}, nil
+}
+
+func ParseShortCircuitDelay(response []byte) (int, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return 0, err
+	}
+	if len(data.Info) < 1 {
+		return 0, fmt.Errorf("short circuit delay response has empty payload")
+	}
+	return int(data.Info[0]) * 25, nil
+}
+
+func ParseDualTemperatureProtectionParameters(response []byte) (TemperatureProtectionParameters, TemperatureProtectionParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return TemperatureProtectionParameters{}, TemperatureProtectionParameters{}, err
+	}
+	if len(data.Info) < 13 {
+		return TemperatureProtectionParameters{}, TemperatureProtectionParameters{}, fmt.Errorf("dual temperature protection response has %d bytes, want 13", len(data.Info))
+	}
+	enabled := data.Info[0] > 0
+	offset := 1
+	w1, _ := readU16(data.Info, &offset)
+	p1, _ := readU16(data.Info, &offset)
+	r1, _ := readU16(data.Info, &offset)
+	w2, _ := readU16(data.Info, &offset)
+	p2, _ := readU16(data.Info, &offset)
+	r2, _ := readU16(data.Info, &offset)
+	first := TemperatureProtectionParameters{
+		Enabled:   enabled,
+		WarningC:  decikelvinToCelsius(w1),
+		ProtectC:  decikelvinToCelsius(p1),
+		RecoveryC: decikelvinToCelsius(r1),
+	}
+	second := TemperatureProtectionParameters{
+		Enabled:   enabled,
+		WarningC:  decikelvinToCelsius(w2),
+		ProtectC:  decikelvinToCelsius(p2),
+		RecoveryC: decikelvinToCelsius(r2),
+	}
+	return first, second, nil
+}
+
+func ParseSingleTemperatureProtectionParameters(response []byte) (TemperatureProtectionParameters, error) {
+	data, err := parseEnvelope(response)
+	if err != nil {
+		return TemperatureProtectionParameters{}, err
+	}
+	if len(data.Info) < 7 {
+		return TemperatureProtectionParameters{}, fmt.Errorf("single temperature protection response has %d bytes, want 7", len(data.Info))
+	}
+	enabled := data.Info[0] > 0
+	offset := 1
+	w, _ := readU16(data.Info, &offset)
+	p, _ := readU16(data.Info, &offset)
+	r, _ := readU16(data.Info, &offset)
+	return TemperatureProtectionParameters{
+		Enabled:   enabled,
+		WarningC:  decikelvinToCelsius(w),
+		ProtectC:  decikelvinToCelsius(p),
+		RecoveryC: decikelvinToCelsius(r),
+	}, nil
 }
 
 func ParseCurrentLimitParameter(response []byte, requestedPack uint8) (CurrentLimitParameter, error) {
@@ -396,6 +688,7 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 		protectState2 := fields[offset]
 		offset++
 		status.Protection = ProtectionStatus{
+			ChargerHighVoltage:   protectState1&0b10000000 != 0,
 			ShortCircuit:         protectState1&0b01000000 != 0,
 			HighDischargeCurrent: protectState1&0b00100000 != 0,
 			HighChargeCurrent:    protectState1&0b00010000 != 0,
@@ -416,6 +709,7 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 		instructionState := fields[offset]
 		offset++
 		status.Instruction = InstructionStatus{
+			HeaterOn:            instructionState&0b10000000 != 0,
 			ChargerAvailable:    instructionState&0b00100000 != 0,
 			ReverseConnected:    instructionState&0b00010000 != 0,
 			DischargeEnabled:    instructionState&0b00000100 != 0,
@@ -426,6 +720,7 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 		controlState := fields[offset]
 		offset++
 		status.Control = ControlStatus{
+			SystemLock:           controlState&0b01000000 != 0,
 			LEDWarnFunction:      controlState&0b00100000 != 0,
 			CurrentLimitFunction: controlState&0b00010000 != 0,
 			CurrentLimitGear:     controlState&0b00001000 != 0,
@@ -435,6 +730,8 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 		faultState := fields[offset]
 		offset++
 		status.Fault = FaultStatus{
+			Heater:       faultState&0b10000000 != 0,
+			CurrentLimit: faultState&0b01000000 != 0,
 			Sampling:     faultState&0b00100000 != 0,
 			Cell:         faultState&0b00010000 != 0,
 			NTC:          faultState&0b00000100 != 0,
@@ -446,6 +743,7 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 		offset++
 		status.BalanceState2 = fields[offset]
 		offset++
+		status.CellsBalancing, status.BalancingCellCount = decodeBalancingCells(status.BalanceState1, status.BalanceState2, status.CellCount)
 
 		warnState1 := fields[offset]
 		offset++
@@ -478,6 +776,105 @@ func ParseWarningPacks(response []byte, requestedPack uint8) ([]PackStatus, erro
 	}
 
 	return statuses, nil
+}
+
+func decodeBalancingCells(state1, state2 uint8, cellCount int) ([]bool, int) {
+	if cellCount <= 0 {
+		cellCount = 16
+	}
+	mask := uint16(state1) | (uint16(state2) << 8)
+	cells := make([]bool, cellCount)
+	count := 0
+	for i := 0; i < cellCount && i < 16; i++ {
+		if (mask & (1 << i)) != 0 {
+			cells[i] = true
+			count++
+		}
+	}
+	return cells, count
+}
+
+func cleanASCII(raw []byte) string {
+	s := string(raw)
+	s = strings.ReplaceAll(s, "\x00", "")
+	return strings.TrimSpace(s)
+}
+
+func decikelvinToCelsius(raw uint16) float64 {
+	return round(float64(raw)/10.0-273.0, 2)
+}
+
+func absFloat(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+var canProtocolNames = map[uint8]string{
+	0:  "PACE_CAN",
+	1:  "PYLON_CAN",
+	2:  "GROWATT_CAN",
+	3:  "VICTRON_CAN",
+	4:  "SE_CAN",
+	5:  "LUXPOWERTEK_CAN",
+	6:  "SRD_CAN",
+	7:  "SMA_CAN",
+	8:  "GOODWE_CAN",
+	9:  "STUDER_CAN",
+	10: "SHOUHANG_CAN",
+	11: "PV_CAN",
+	12: "JINLANG_CAN",
+	13: "DIDU_SOFAR_CAN",
+	14: "SENERGYINV_CAN",
+	15: "TBB_LITHIUM_CAN",
+	16: "PYLON_V202_CAN",
+	17: "GROWATT_V109_CAN",
+	18: "MUST_V202_CAN",
+	36: "DEYE_CAN",
+}
+
+var rs485ProtocolNames = map[uint8]string{
+	0:  "PACE_485",
+	1:  "PYLON_485",
+	2:  "GROWATT_485",
+	3:  "VOLTRON_485",
+	4:  "SE_485",
+	5:  "PHOCOS_485",
+	6:  "LUXPOWER_485",
+	7:  "SOLAR_485",
+	8:  "LITHIUM_485",
+	11: "LUXPOWER_V01_485",
+	12: "LUXPOWER_V03_485",
+	13: "WOW_485",
+	14: "LEOCH485_485",
+	15: "PYLON_115200_485",
+	16: "VICTRONIC_V15_485",
+}
+
+func canProtocolName(code uint8) string {
+	if name, ok := canProtocolNames[code]; ok {
+		return name
+	}
+	return fmt.Sprintf("UNKNOWN_CAN_0x%02X", code)
+}
+
+func rs485ProtocolName(code uint8) string {
+	if name, ok := rs485ProtocolNames[code]; ok {
+		return name
+	}
+	return fmt.Sprintf("UNKNOWN_485_0x%02X", code)
+}
+
+func inverterProtocolModeName(mode uint8) string {
+	switch mode {
+	case 0:
+		return "auto"
+	case 1:
+		return "manual"
+	default:
+		return ""
+	}
 }
 
 func warningLevel(value byte) string {
@@ -605,7 +1002,7 @@ func lengthChecksum(lenID string) string {
 		n, _ := strconv.ParseInt(string(r), 16, 64)
 		sum += n
 	}
-	return fmt.Sprintf("%X", ((^sum)&0xF)+1&0xF)
+	return fmt.Sprintf("%X", ((^sum)+1)&0xF)
 }
 
 func payloadChecksum(data []byte) string {
@@ -613,7 +1010,7 @@ func payloadChecksum(data []byte) string {
 	for _, b := range data[1:] {
 		sum += int(b)
 	}
-	return fmt.Sprintf("%04X", ((^sum)&0xFFFF)+1&0xFFFF)
+	return fmt.Sprintf("%04X", ((^sum)+1)&0xFFFF)
 }
 
 func isTimeoutish(err error) bool {
@@ -622,19 +1019,57 @@ func isTimeoutish(err error) bool {
 }
 
 var commandCodes = map[Command]string{
-	CommandPackNumber:      "90",
-	CommandAnalog:          "42",
-	CommandWarningInfo:     "44",
-	CommandCurrentLimit:    "ED",
-	CommandProductInfo:     "C2",
-	CommandSoftwareVersion: "C1",
+	CommandPackNumber:            "90",
+	CommandAnalog:                "42",
+	CommandWarningInfo:           "44",
+	CommandCurrentLimit:          "ED",
+	CommandProductInfo:           "C2",
+	CommandSoftwareVersion:       "C1",
+	CommandPaceSoftwareVersion:   "C6",
+	CommandBMSDateTime:           "B1",
+	CommandInverterProtocol:      "EB",
+	CommandInverterProtocolV2:    "62",
+	CommandEqualizationParams:    "B6",
+	CommandFullChargeParams:      "AF",
+	CommandSingleHibernateParams: "A0",
+	CommandCellOVPParams:         "D1",
+	CommandCellUVPParams:         "D3",
+	CommandPackOVPParams:         "D5",
+	CommandPackUVPParams:         "D7",
+	CommandChargeOCPParams:       "D9",
+	CommandDischargeOCP1Params:   "DB",
+	CommandDischargeOCP2Params:   "E3",
+	CommandShortCircuitDelay:     "E5",
+	CommandHighTempParams:        "DD",
+	CommandLowTempParams:         "DF",
+	CommandMOSHighTempParams:     "E1",
+	CommandEnvTempParams:         "E7",
 }
 
 var commandLengths = map[Command]string{
-	CommandPackNumber:      "000",
-	CommandAnalog:          "002",
-	CommandWarningInfo:     "002",
-	CommandCurrentLimit:    "000",
-	CommandProductInfo:     "000",
-	CommandSoftwareVersion: "000",
+	CommandPackNumber:            "000",
+	CommandAnalog:                "002",
+	CommandWarningInfo:           "002",
+	CommandCurrentLimit:          "000",
+	CommandProductInfo:           "000",
+	CommandSoftwareVersion:       "000",
+	CommandPaceSoftwareVersion:   "000",
+	CommandBMSDateTime:           "000",
+	CommandInverterProtocol:      "000",
+	CommandInverterProtocolV2:    "000",
+	CommandEqualizationParams:    "000",
+	CommandFullChargeParams:      "000",
+	CommandSingleHibernateParams: "000",
+	CommandCellOVPParams:         "000",
+	CommandCellUVPParams:         "000",
+	CommandPackOVPParams:         "000",
+	CommandPackUVPParams:         "000",
+	CommandChargeOCPParams:       "000",
+	CommandDischargeOCP1Params:   "000",
+	CommandDischargeOCP2Params:   "000",
+	CommandShortCircuitDelay:     "000",
+	CommandHighTempParams:        "000",
+	CommandLowTempParams:         "000",
+	CommandMOSHighTempParams:     "000",
+	CommandEnvTempParams:         "000",
 }
